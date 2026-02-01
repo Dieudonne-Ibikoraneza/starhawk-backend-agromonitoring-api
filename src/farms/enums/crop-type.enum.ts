@@ -1,0 +1,14 @@
+export enum CropType {
+  MAIZE = 'MAIZE',
+  BEANS = 'BEANS',
+  RICE = 'RICE',
+  WHEAT = 'WHEAT',
+  SORGHUM = 'SORGHUM',
+  POTATOES = 'POTATOES',
+  CASSAVA = 'CASSAVA',
+  BANANAS = 'BANANAS',
+  COFFEE = 'COFFEE',
+  TEA = 'TEA',
+  OTHER = 'OTHER',
+}
+

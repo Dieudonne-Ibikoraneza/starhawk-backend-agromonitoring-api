@@ -1,0 +1,8 @@
+export enum ClaimStatus {
+  FILED = 'FILED',
+  ASSIGNED = 'ASSIGNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+

@@ -1,0 +1,79 @@
+# Render.com Blueprint Configuration
+# This file allows you to define your infrastructure as code
+# Deploy using: https://render.com/docs/blueprint-spec
+
+services:
+  # Backend Web Service
+  - type: web
+    name: starhawk-backend
+    runtime: node
+    plan: starter  # Change to 'free' for free tier
+    region: oregon  # Options: oregon, frankfurt, singapore, tokyo, sydney
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      # Application
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Render sets PORT automatically, but we specify default
+      - key: CORS_ORIGIN
+        value: *  # Update with your frontend domain
+      
+      # Database - SET THIS TO YOUR MONGODB ATLAS CONNECTION STRING
+      - key: MONGODB_URI
+        sync: false  # Set manually in Render dashboard
+      
+      # JWT - SET THIS TO A SECURE SECRET
+      - key: JWT_SECRET
+        sync: false  # Set manually in Render dashboard
+      - key: JWT_EXPIRATION_MS
+        value: 86400000
+      
+      # EOSDA API - SET THESE TO YOUR API CREDENTIALS
+      - key: EOSDA_API_URL
+        value: https://api-connect.eos.com
+      - key: EOSDA_API_KEY
+        sync: false  # Set manually in Render dashboard
+      
+      # Email Configuration - UPDATE WITH YOUR SMTP SETTINGS
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_SECURE
+        value: false
+      - key: MAIL_USER
+        sync: false  # Set manually in Render dashboard
+      - key: MAIL_PASSWORD
+        sync: false  # Set manually in Render dashboard
+      - key: MAIL_FROM
+        value: noreply@starhawk.com
+      
+      # Admin Bootstrap - CHANGE THESE DEFAULT CREDENTIALS!
+      - key: ADMIN_EMAIL
+        value: admin@starhawk.com
+      - key: ADMIN_PHONE
+        value: 0721234567
+      - key: ADMIN_NATIONAL_ID
+        value: 1199012345678901
+      - key: ADMIN_PASSWORD
+        sync: false  # Set manually in Render dashboard (use strong password)
+      
+      # NIDA API
+      - key: NIDA_API_URL
+        value: https://prod.safaribus.rw/nxreporting/nida
+      
+      # Drone Analysis Service
+      - key: DRONE_ANALYSIS_SERVICE_URL
+        value: https://drone-pdf-extractor.onrender.com
+      
+      # File Upload
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: MAX_FILE_SIZE
+        value: 1048576
+
+# Note: Variables marked with sync: false must be set manually in Render dashboard
+# for security reasons (secrets, API keys, passwords)
+

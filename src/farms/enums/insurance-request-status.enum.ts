@@ -1,0 +1,8 @@
+export enum InsuranceRequestStatus {
+  PENDING = 'PENDING',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  ASSESSED = 'ASSESSED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+

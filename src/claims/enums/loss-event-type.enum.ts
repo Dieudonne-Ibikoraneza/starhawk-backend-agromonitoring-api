@@ -1,0 +1,11 @@
+export enum LossEventType {
+  DROUGHT = 'DROUGHT',
+  FLOOD = 'FLOOD',
+  PEST_INFESTATION = 'PEST_INFESTATION',
+  DISEASE = 'DISEASE',
+  HAIL = 'HAIL',
+  FIRE = 'FIRE',
+  STORM = 'STORM',
+  OTHER = 'OTHER',
+}
+

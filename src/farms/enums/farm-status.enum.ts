@@ -1,0 +1,7 @@
+export enum FarmStatus {
+  PENDING = 'PENDING',
+  REGISTERED = 'REGISTERED',
+  INSURED = 'INSURED',
+  REJECTED = 'REJECTED',
+}
+
