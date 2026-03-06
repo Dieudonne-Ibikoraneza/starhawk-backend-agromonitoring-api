@@ -712,6 +712,7 @@ export class FarmsService {
       name: farm.name,
       area: farm.area,
       cropType: farm.cropType,
+      sowingDate: farm.sowingDate,
       location: farm.location,
       locationName: locationName,
       boundary: farm.boundary,

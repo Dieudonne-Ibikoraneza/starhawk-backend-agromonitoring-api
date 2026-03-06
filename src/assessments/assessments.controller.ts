@@ -256,6 +256,13 @@ export class AssessmentsController {
     );
   }
 
+  @Get('farm/:farmId')
+  @ApiOperation({ summary: 'Get assessment by farm ID' })
+  @ApiResponse({ status: 200 })
+  async getAssessmentByFarmId(@Param('farmId', UuidValidationPipe) farmId: string) {
+    return this.assessmentsService.getAssessmentByFarmId(farmId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get assessment by ID' })
   @ApiResponse({ status: 200 })

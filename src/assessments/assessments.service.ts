@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { AssessmentsRepository } from './assessments.repository';
 import { FarmsRepository } from '../farms/farms.repository';
@@ -12,6 +8,7 @@ import { EosdaService } from '../eosda/eosda.service';
 import { EmailService } from '../email/email.service';
 import { RiskScoringService } from './services/risk-scoring.service';
 import { DroneAnalysisService } from './services/drone-analysis.service';
+import { LocationService } from '../farms/services/location.service';
 import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { AssignAssessorDto } from './dto/assign-assessor.dto';
@@ -26,6 +23,8 @@ import { AssessmentReportResponseDto } from './dto/assessment-report-response.dt
 
 @Injectable()
 export class AssessmentsService {
+  private readonly logger = new Logger(AssessmentsService.name);
+
   constructor(
     private assessmentsRepository: AssessmentsRepository,
     private farmsRepository: FarmsRepository,
@@ -35,6 +34,7 @@ export class AssessmentsService {
     private emailService: EmailService,
     private riskScoringService: RiskScoringService,
     private droneAnalysisService: DroneAnalysisService,
+    private locationService: LocationService,
   ) {}
 
   /**
@@ -52,23 +52,16 @@ export class AssessmentsService {
     return String(assessorId);
   }
 
-  async createAssessment(
-    insurerId: string | null,
-    createDto: CreateAssessmentDto,
-  ) {
+  async createAssessment(insurerId: string | null, createDto: CreateAssessmentDto) {
     const farm = await this.farmsRepository.findById(createDto.farmId);
     if (!farm) {
       throw new NotFoundException('Farm', createDto.farmId);
     }
 
     // Check if assessment already exists for this farm
-    const existing = await this.assessmentsRepository.findByFarmId(
-      createDto.farmId,
-    );
+    const existing = await this.assessmentsRepository.findByFarmId(createDto.farmId);
     if (existing) {
-      throw new BadRequestException(
-        'Assessment already exists for this farm',
-      );
+      throw new BadRequestException('Assessment already exists for this farm');
     }
 
     const assessmentData: any = {
@@ -88,20 +81,14 @@ export class AssessmentsService {
     return assessment;
   }
 
-  async updateAssessment(
-    assessorId: string,
-    assessmentId: string,
-    updateDto: UpdateAssessmentDto,
-  ) {
+  async updateAssessment(assessorId: string, assessmentId: string, updateDto: UpdateAssessmentDto) {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
       throw new NotFoundException('Assessment', assessmentId);
     }
 
     if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
-      throw new BadRequestException(
-        'This assessment is not assigned to you',
-      );
+      throw new BadRequestException('This assessment is not assigned to you');
     }
 
     // Update status to IN_PROGRESS if not already
@@ -133,9 +120,10 @@ export class AssessmentsService {
       farm = assessment.farmId;
     } else {
       // Not populated - fetch it using the ObjectId (shouldn't happen with current repository)
-      const farmId = assessment.farmId instanceof Types.ObjectId 
-        ? assessment.farmId.toString() 
-        : assessment.farmId;
+      const farmId =
+        assessment.farmId instanceof Types.ObjectId
+          ? assessment.farmId.toString()
+          : assessment.farmId;
       farm = await this.farmsRepository.findById(farmId);
       if (!farm) {
         throw new NotFoundException('Farm not found');
@@ -151,15 +139,13 @@ export class AssessmentsService {
     let weatherData: any[] = [];
     if (farm.eosdaFieldId) {
       try {
-        const weatherResponse = await this.eosdaService.weather.getHistoricalWeather(
-          {
-            fieldId: farm.eosdaFieldId,
-            dateStart: startDate.toISOString().split('T')[0],
-            dateEnd: endDate.toISOString().split('T')[0],
-          },
-        );
+        const weatherResponse = await this.eosdaService.weather.getHistoricalWeather({
+          fieldId: farm.eosdaFieldId,
+          dateStart: startDate.toISOString().split('T')[0],
+          dateEnd: endDate.toISOString().split('T')[0],
+        });
         // Convert historical_data to format expected by risk scoring
-        weatherData = weatherResponse.historical_data.map((point) => ({
+        weatherData = weatherResponse.historical_data.map(point => ({
           date: point.date,
           rainfall: point.rainfall,
           temperature: {
@@ -178,17 +164,17 @@ export class AssessmentsService {
     let ndviData: any[] = [];
     if (farm.eosdaFieldId) {
       try {
-        const statsResponse =
-          await this.eosdaService.statistics.getNDVITimeSeries({
-            fieldId: farm.eosdaFieldId,
-            startDate: startDate.toISOString().split('T')[0],
-            endDate: endDate.toISOString().split('T')[0],
-          });
+        const statsResponse = await this.eosdaService.statistics.getNDVITimeSeries({
+          fieldId: farm.eosdaFieldId,
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0],
+        });
         // Convert to format expected by risk scoring
-        ndviData = statsResponse.indices.NDVI?.map((point) => ({
-          date: point.date,
-          value: point.value,
-        })) || [];
+        ndviData =
+          statsResponse.indices.NDVI?.map(point => ({
+            date: point.date,
+            value: point.value,
+          })) || [];
       } catch (error) {
         // Log but continue with empty NDVI data
         console.error('Failed to fetch NDVI data:', error);
@@ -220,6 +206,14 @@ export class AssessmentsService {
     return assessment;
   }
 
+  async getAssessmentByFarmId(farmId: string) {
+    const assessment = await this.assessmentsRepository.findByFarmId(farmId);
+    if (!assessment) {
+      return null;
+    }
+    return assessment;
+  }
+
   async getAssessorAssessments(assessorId: string) {
     console.log('getAssessorAssessments called with assessorId:', assessorId);
     const assessments = await this.assessmentsRepository.findByAssessorId(assessorId);
@@ -241,27 +235,25 @@ export class AssessmentsService {
     return assessments;
   }
 
-  async getAllFarmersWithFarms(
-    assessorId?: string,
-  ): Promise<FarmerWithFarmsResponseDto[]> {
+  async getAllFarmersWithFarms(assessorId?: string): Promise<FarmerWithFarmsResponseDto[]> {
     // If assessorId is provided, only get farmers whose farms are assigned to this assessor
     let assignedFarmIds: string[] = [];
     if (assessorId) {
-      const assessments = await this.assessmentsRepository.findByAssessorId(
-        assessorId,
-      );
-      assignedFarmIds = assessments.map((assessment) => {
-        // Handle both populated and unpopulated farmId
-        const farmId = assessment.farmId as any;
-        if (farmId && farmId._id) {
-          // farmId is populated (Farm object)
-          return farmId._id.toString();
-        } else if (farmId) {
-          // farmId is unpopulated (ObjectId)
-          return farmId.toString();
-        }
-        return null;
-      }).filter((id): id is string => id !== null);
+      const assessments = await this.assessmentsRepository.findByAssessorId(assessorId);
+      assignedFarmIds = assessments
+        .map(assessment => {
+          // Handle both populated and unpopulated farmId
+          const farmId = assessment.farmId as any;
+          if (farmId && farmId._id) {
+            // farmId is populated (Farm object)
+            return farmId._id.toString();
+          } else if (farmId) {
+            // farmId is unpopulated (ObjectId)
+            return farmId.toString();
+          }
+          return null;
+        })
+        .filter((id): id is string => id !== null);
     }
 
     // Get all farmers
@@ -275,19 +267,16 @@ export class AssessmentsService {
 
     // Map each farmer to include their profile and farms
     const farmersWithFarms = await Promise.all(
-      farmersResult.items.map(async (farmer) => {
+      farmersResult.items.map(async farmer => {
         const farmerDoc = farmer as any;
 
         // Get farmer profile
-        const farmerProfile =
-          await this.profilesRepository.findFarmerProfileByUserId(
-            farmerDoc._id.toString(),
-          );
-
-        // Get all farms for this farmer
-        const farms = await this.farmsRepository.findByFarmerId(
+        const farmerProfile = await this.profilesRepository.findFarmerProfileByUserId(
           farmerDoc._id.toString(),
         );
+
+        // Get all farms for this farmer
+        const farms = await this.farmsRepository.findByFarmerId(farmerDoc._id.toString());
 
         // Filter farms: if assessorId provided, only include assigned farms
         let filteredFarms = farms;
@@ -303,20 +292,40 @@ export class AssessmentsService {
         }
 
         // Map farms to response DTO
-        const farmsResponse: FarmResponseDto[] = filteredFarms.map(
-          (farm: any) => ({
-            id: farm._id.toString(),
-            farmerId: farm.farmerId.toString(),
-            name: farm.name,
-            area: farm.area,
-            cropType: farm.cropType,
-            location: farm.location,
-            boundary: farm.boundary,
-            status: farm.status,
-            shapefilePath: farm.shapefilePath,
-            eosdaFieldId: farm.eosdaFieldId,
-            createdAt: farm.createdAt,
-            updatedAt: farm.updatedAt,
+        const farmsResponse: FarmResponseDto[] = await Promise.all(
+          filteredFarms.map(async (farm: any) => {
+            // Get location name from coordinates
+            let locationName: string | undefined;
+            if (
+              farm.location &&
+              farm.location.coordinates &&
+              farm.location.coordinates.length >= 2
+            ) {
+              const latitude = farm.location.coordinates[1];
+              const longitude = farm.location.coordinates[0];
+              try {
+                locationName = await this.locationService.getLocationString(latitude, longitude);
+              } catch (err) {
+                this.logger.warn(`Failed to get location name for farm ${farm._id}: ${err}`);
+              }
+            }
+
+            return {
+              id: farm._id.toString(),
+              farmerId: farm.farmerId.toString(),
+              name: farm.name,
+              area: farm.area,
+              cropType: farm.cropType,
+              sowingDate: farm.sowingDate,
+              location: farm.location,
+              locationName: locationName,
+              boundary: farm.boundary,
+              status: farm.status,
+              shapefilePath: farm.shapefilePath,
+              eosdaFieldId: farm.eosdaFieldId,
+              createdAt: farm.createdAt,
+              updatedAt: farm.updatedAt,
+            };
           }),
         );
 
@@ -356,44 +365,29 @@ export class AssessmentsService {
     );
 
     // Filter out null values (farmers with no assigned farms when assessorId provided)
-    return farmersWithFarms.filter(
-      (farmer) => farmer !== null,
-    ) as FarmerWithFarmsResponseDto[];
+    return farmersWithFarms.filter(farmer => farmer !== null) as FarmerWithFarmsResponseDto[];
   }
 
-  async isAssessorAssignedToFarmer(
-    assessorId: string,
-    farmerId: string,
-  ): Promise<boolean> {
-    return this.assessmentsRepository.isAssessorAssignedToFarmer(
-      assessorId,
-      farmerId,
-    );
+  async isAssessorAssignedToFarmer(assessorId: string, farmerId: string): Promise<boolean> {
+    return this.assessmentsRepository.isAssessorAssignedToFarmer(assessorId, farmerId);
   }
 
-  async isAssessorAssignedToFarm(
-    assessorId: string,
-    farmId: string,
-  ): Promise<boolean> {
-    return this.assessmentsRepository.isAssessorAssignedToFarm(
-      assessorId,
-      farmId,
-    );
+  async isAssessorAssignedToFarm(assessorId: string, farmId: string): Promise<boolean> {
+    return this.assessmentsRepository.isAssessorAssignedToFarm(assessorId, farmId);
   }
 
   async getPendingFarms(): Promise<PendingFarmResponseDto[]> {
     const farms = await this.farmsRepository.findByStatus(FarmStatus.PENDING);
 
     return Promise.all(
-      farms.map(async (farm) => {
+      farms.map(async farm => {
         const farmDoc = farm as any;
         const farmer = farm.farmerId as any;
 
         // Get farmer profile
-        const farmerProfile =
-          await this.profilesRepository.findFarmerProfileByUserId(
-            farmer._id.toString(),
-          );
+        const farmerProfile = await this.profilesRepository.findFarmerProfileByUserId(
+          farmer._id.toString(),
+        );
 
         // Build farmer response
         const farmerResponse: any = {
@@ -439,11 +433,7 @@ export class AssessmentsService {
     );
   }
 
-  async assignAssessorToFarm(
-    farmId: string,
-    assessorId: string,
-    insurerId?: string,
-  ) {
+  async assignAssessorToFarm(farmId: string, assessorId: string, insurerId?: string) {
     // Validate farm exists
     const farm = await this.farmsRepository.findById(farmId);
     if (!farm) {
@@ -469,9 +459,7 @@ export class AssessmentsService {
     // Check if assessment already exists for this farm
     const existing = await this.assessmentsRepository.findByFarmId(farmId);
     if (existing) {
-      throw new BadRequestException(
-        'Assessment already exists for this farm',
-      );
+      throw new BadRequestException('Assessment already exists for this farm');
     }
 
     // Create assessment
@@ -498,17 +486,13 @@ export class AssessmentsService {
           farmName,
           (assessment._id as any).toString(),
         )
-        .catch((error) => {
+        .catch(error => {
           // Log but don't fail assignment if email fails
-          console.error(
-            `Failed to send assessment assignment email: ${error.message}`,
-          );
+          console.error(`Failed to send assessment assignment email: ${error.message}`);
         });
     } catch (error) {
       // Log but don't fail assignment if notification fails
-      console.error(
-        `Failed to send assessor notification: ${error.message}`,
-      );
+      console.error(`Failed to send assessor notification: ${error.message}`);
     }
 
     return assessment;
@@ -530,9 +514,7 @@ export class AssessmentsService {
     }
 
     if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
-      throw new BadRequestException(
-        'Assessment does not belong to this assessor',
-      );
+      throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
     // Validate file is PDF
@@ -549,7 +531,9 @@ export class AssessmentsService {
     const existingPdfs = assessment.droneAnalysisPdfs || [];
     const existingPdf = existingPdfs.find(pdf => pdf.pdfType === pdfType);
     if (existingPdf) {
-      throw new BadRequestException(`A ${pdfType.replace('_', ' ')} PDF has already been uploaded for this assessment`);
+      throw new BadRequestException(
+        `A ${pdfType.replace('_', ' ')} PDF has already been uploaded for this assessment`,
+      );
     }
 
     // When using diskStorage, file.buffer is undefined - use file.path instead
@@ -562,7 +546,7 @@ export class AssessmentsService {
     const fs = require('fs');
     const path = require('path');
     const uploadDir = './uploads/drone-analysis';
-    
+
     // Ensure directory exists
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -600,11 +584,9 @@ export class AssessmentsService {
     let droneAnalysisData = null;
     try {
       console.log(`Calling drone analysis service for: ${absoluteFilePath}`);
-      const analysisResult = await this.droneAnalysisService.extractDroneData(
-        absoluteFilePath,
-      );
+      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
       console.log('Drone analysis result:', analysisResult);
-      
+
       if (analysisResult.success && analysisResult.extractedData) {
         droneAnalysisData = analysisResult.extractedData;
         console.log('Successfully extracted drone data');
@@ -631,12 +613,9 @@ export class AssessmentsService {
 
     // Update assessment with new PDF in the array
     const updatedPdfs = [...existingPdfs, newPdfEntry];
-    const updatedAssessment = await this.assessmentsRepository.update(
-      assessmentId,
-      {
-        droneAnalysisPdfs: updatedPdfs,
-      },
-    );
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      droneAnalysisPdfs: updatedPdfs,
+    });
 
     return {
       assessmentId,
@@ -674,16 +653,16 @@ export class AssessmentsService {
     }
 
     if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
-      throw new BadRequestException(
-        'Assessment does not belong to this assessor',
-      );
+      throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
     const existingPdfs = assessment.droneAnalysisPdfs || [];
     const pdfIndex = existingPdfs.findIndex(pdf => pdf.pdfType === pdfType);
-    
+
     if (pdfIndex === -1) {
-      throw new BadRequestException(`No ${pdfType.replace('_', ' ')} PDF found for this assessment`);
+      throw new BadRequestException(
+        `No ${pdfType.replace('_', ' ')} PDF found for this assessment`,
+      );
     }
 
     // Remove file from filesystem
@@ -691,20 +670,17 @@ export class AssessmentsService {
     const path = require('path');
     const pdfToDelete = existingPdfs[pdfIndex];
     const filePath = path.join('.', pdfToDelete.pdfUrl);
-    
+
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
     // Remove from array
     const updatedPdfs = existingPdfs.filter(pdf => pdf.pdfType !== pdfType);
-    
-    const updatedAssessment = await this.assessmentsRepository.update(
-      assessmentId,
-      {
-        droneAnalysisPdfs: updatedPdfs,
-      },
-    );
+
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      droneAnalysisPdfs: updatedPdfs,
+    });
 
     return {
       assessmentId,
@@ -730,13 +706,11 @@ export class AssessmentsService {
       const startDate = new Date();
       startDate.setFullYear(startDate.getFullYear() - 3); // 3 years of historical data
 
-      const weatherResponse = await this.eosdaService.weather.getHistoricalWeather(
-        {
-          fieldId: farm.eosdaFieldId,
-          dateStart: startDate.toISOString().split('T')[0],
-          dateEnd: endDate.toISOString().split('T')[0],
-        },
-      );
+      const weatherResponse = await this.eosdaService.weather.getHistoricalWeather({
+        fieldId: farm.eosdaFieldId,
+        dateStart: startDate.toISOString().split('T')[0],
+        dateEnd: endDate.toISOString().split('T')[0],
+      });
 
       // Return the full weather response for the report
       return weatherResponse;
@@ -750,10 +724,7 @@ export class AssessmentsService {
    * Generate full assessment report
    * Compiles and returns structured report with: Farm Details, Drone Analysis, Comprehensive Notes, Weather Data
    */
-  async generateFullReport(
-    assessorId: string,
-    assessmentId: string,
-  ): Promise<any> {
+  async generateFullReport(assessorId: string, assessmentId: string): Promise<any> {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
@@ -761,9 +732,7 @@ export class AssessmentsService {
     }
 
     if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
-      throw new BadRequestException(
-        'Assessment does not belong to this assessor',
-      );
+      throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
     // Validate required fields are complete
@@ -809,9 +778,10 @@ export class AssessmentsService {
     if (assessment.farmId && typeof assessment.farmId === 'object' && 'name' in assessment.farmId) {
       farm = assessment.farmId;
     } else {
-      const farmId = assessment.farmId instanceof Types.ObjectId 
-        ? assessment.farmId.toString() 
-        : assessment.farmId;
+      const farmId =
+        assessment.farmId instanceof Types.ObjectId
+          ? assessment.farmId.toString()
+          : assessment.farmId;
       farm = await this.farmsRepository.findById(farmId);
       if (!farm) {
         throw new NotFoundException('Farm not found');
@@ -853,22 +823,17 @@ export class AssessmentsService {
     };
 
     // Update assessment with report generation flag
-    const updatedAssessment = await this.assessmentsRepository.update(
-      assessmentId,
-      {
-        reportGenerated: true,
-        reportGeneratedAt: new Date(),
-        status: AssessmentStatus.SUBMITTED,
-        weatherData: weatherData || assessment.weatherData,
-      },
-    );
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      reportGenerated: true,
+      reportGeneratedAt: new Date(),
+      status: AssessmentStatus.SUBMITTED,
+      weatherData: weatherData || assessment.weatherData,
+    });
 
     // Notify insurer if assessment has an insurer
     if (assessment.insurerId) {
       try {
-        const insurer = await this.usersRepository.findById(
-          assessment.insurerId.toString(),
-        );
+        const insurer = await this.usersRepository.findById(assessment.insurerId.toString());
         if (insurer) {
           const farmName = farm?.name || `Farm ${assessment.farmId}`;
 
@@ -880,16 +845,12 @@ export class AssessmentsService {
               assessmentId,
               0, // Risk score no longer used, pass 0
             )
-            .catch((error) => {
-              console.error(
-                `Failed to send report ready notification: ${error.message}`,
-              );
+            .catch(error => {
+              console.error(`Failed to send report ready notification: ${error.message}`);
             });
         }
       } catch (error) {
-        console.error(
-          `Failed to notify insurer about report: ${error.message}`,
-        );
+        console.error(`Failed to notify insurer about report: ${error.message}`);
       }
     }
 
@@ -899,10 +860,7 @@ export class AssessmentsService {
   /**
    * Approve assessment (Insurer only)
    */
-  async approveAssessment(
-    insurerId: string,
-    assessmentId: string,
-  ): Promise<any> {
+  async approveAssessment(insurerId: string, assessmentId: string): Promise<any> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
       throw new NotFoundException('Assessment', assessmentId);
@@ -910,9 +868,7 @@ export class AssessmentsService {
 
     // Validate assessment belongs to insurer
     if (!assessment.insurerId || assessment.insurerId.toString() !== insurerId) {
-      throw new BadRequestException(
-        'Assessment does not belong to this insurer',
-      );
+      throw new BadRequestException('Assessment does not belong to this insurer');
     }
 
     // Validate report is generated
@@ -930,21 +886,14 @@ export class AssessmentsService {
     }
 
     // Update assessment status
-    const updatedAssessment = await this.assessmentsRepository.update(
-      assessmentId,
-      {
-        status: AssessmentStatus.APPROVED,
-      },
-    );
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      status: AssessmentStatus.APPROVED,
+    });
 
     // Notify farmer and assessor
     try {
-      const farm = await this.farmsRepository.findById(
-        assessment.farmId.toString(),
-      );
-      const farmer = farm
-        ? await this.usersRepository.findById(farm.farmerId.toString())
-        : null;
+      const farm = await this.farmsRepository.findById(assessment.farmId.toString());
+      const farmer = farm ? await this.usersRepository.findById(farm.farmerId.toString()) : null;
       const assessor = await this.usersRepository.findById(
         this.extractAssessorId(assessment.assessorId),
       );
@@ -957,10 +906,8 @@ export class AssessmentsService {
             farm?.name || 'Farm',
             assessmentId,
           )
-          .catch((error) => {
-            console.error(
-              `Failed to send approval email to farmer: ${error.message}`,
-            );
+          .catch(error => {
+            console.error(`Failed to send approval email to farmer: ${error.message}`);
           });
       }
 
@@ -972,10 +919,8 @@ export class AssessmentsService {
             farm?.name || 'Farm',
             assessmentId,
           )
-          .catch((error) => {
-            console.error(
-              `Failed to send approval email to assessor: ${error.message}`,
-            );
+          .catch(error => {
+            console.error(`Failed to send approval email to assessor: ${error.message}`);
           });
       }
     } catch (error) {
@@ -1000,16 +945,12 @@ export class AssessmentsService {
 
     // Validate assessment belongs to insurer
     if (!assessment.insurerId || assessment.insurerId.toString() !== insurerId) {
-      throw new BadRequestException(
-        'Assessment does not belong to this insurer',
-      );
+      throw new BadRequestException('Assessment does not belong to this insurer');
     }
 
     // Validate report is generated
     if (!assessment.reportGenerated) {
-      throw new BadRequestException(
-        'Cannot reject assessment. Report has not been generated yet.',
-      );
+      throw new BadRequestException('Cannot reject assessment. Report has not been generated yet.');
     }
 
     // Validate assessment is in SUBMITTED status
@@ -1020,24 +961,17 @@ export class AssessmentsService {
     }
 
     // Update assessment status and store rejection reason
-    const updatedAssessment = await this.assessmentsRepository.update(
-      assessmentId,
-      {
-        status: AssessmentStatus.REJECTED,
-        reportText: assessment.reportText
-          ? `${assessment.reportText}\n\nRejection Reason: ${rejectionReason}`
-          : `Rejection Reason: ${rejectionReason}`,
-      },
-    );
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      status: AssessmentStatus.REJECTED,
+      reportText: assessment.reportText
+        ? `${assessment.reportText}\n\nRejection Reason: ${rejectionReason}`
+        : `Rejection Reason: ${rejectionReason}`,
+    });
 
     // Notify farmer and assessor
     try {
-      const farm = await this.farmsRepository.findById(
-        assessment.farmId.toString(),
-      );
-      const farmer = farm
-        ? await this.usersRepository.findById(farm.farmerId.toString())
-        : null;
+      const farm = await this.farmsRepository.findById(assessment.farmId.toString());
+      const farmer = farm ? await this.usersRepository.findById(farm.farmerId.toString()) : null;
       const assessor = await this.usersRepository.findById(
         this.extractAssessorId(assessment.assessorId),
       );
@@ -1051,10 +985,8 @@ export class AssessmentsService {
             assessmentId,
             rejectionReason,
           )
-          .catch((error) => {
-            console.error(
-              `Failed to send rejection email to farmer: ${error.message}`,
-            );
+          .catch(error => {
+            console.error(`Failed to send rejection email to farmer: ${error.message}`);
           });
       }
 
@@ -1067,10 +999,8 @@ export class AssessmentsService {
             assessmentId,
             rejectionReason,
           )
-          .catch((error) => {
-            console.error(
-              `Failed to send rejection email to assessor: ${error.message}`,
-            );
+          .catch(error => {
+            console.error(`Failed to send rejection email to assessor: ${error.message}`);
           });
       }
     } catch (error) {
@@ -1080,4 +1010,3 @@ export class AssessmentsService {
     return updatedAssessment;
   }
 }
-

@@ -21,6 +21,9 @@ export class FarmResponseDto {
   @ApiProperty({ enum: CropType, required: false })
   cropType?: CropType;
 
+  @ApiProperty({ required: false })
+  sowingDate?: Date;
+
   @ApiProperty()
   location: {
     type: 'Point';

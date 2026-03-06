@@ -43,7 +43,7 @@ import {
     ShapefileParserService,
     LocationService,
   ],
-  exports: [FarmsService, FarmsRepository],
+  exports: [FarmsService, FarmsRepository, LocationService],
 })
 export class FarmsModule {}
 
