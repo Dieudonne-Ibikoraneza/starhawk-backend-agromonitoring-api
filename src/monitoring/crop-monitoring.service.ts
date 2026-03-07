@@ -1,14 +1,9 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CropMonitoringRepository } from './crop-monitoring.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { FarmsRepository } from '../farms/farms.repository';
 import { UsersRepository } from '../users/users.repository';
-import { EosdaService } from '../eosda/eosda.service';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
 import { CropMonitoringStatus } from './schemas/crop-monitoring.schema';
 import { Types } from 'mongoose';
@@ -22,7 +17,7 @@ export class CropMonitoringService {
     private policiesRepository: PoliciesRepository,
     private farmsRepository: FarmsRepository,
     private usersRepository: UsersRepository,
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
   ) {}
 
@@ -30,10 +25,7 @@ export class CropMonitoringService {
    * Start a new crop monitoring cycle
    * Validates max 2 cycles per policy
    */
-  async startMonitoring(
-    assessorId: string,
-    policyId: string,
-  ): Promise<any> {
+  async startMonitoring(assessorId: string, policyId: string): Promise<any> {
     // Validate policy exists
     const policy = await this.policiesRepository.findById(policyId);
     if (!policy) {
@@ -46,45 +38,35 @@ export class CropMonitoringService {
     }
 
     // Check existing monitoring cycles for this policy
-    const existingCount = await this.cropMonitoringRepository.countByPolicyId(
-      policyId,
-    );
+    const existingCount = await this.cropMonitoringRepository.countByPolicyId(policyId);
 
     if (existingCount >= 2) {
-      throw new BadRequestException(
-        'Maximum 2 monitoring cycles allowed per policy',
-      );
+      throw new BadRequestException('Maximum 2 monitoring cycles allowed per policy');
     }
 
     // Determine monitoring number (1 or 2)
     const monitoringNumber = existingCount + 1;
 
-    // Get farm for EOSDA data
-    const farm = await this.farmsRepository.findById(
-      policy.farmId.toString(),
-    );
+    // Get farm for AGROmonitoring data
+    const farm = await this.farmsRepository.findById(policy.farmId.toString());
     if (!farm) {
       throw new NotFoundException('Farm', policy.farmId.toString());
     }
 
-    // Fetch weather data from EOSDA (if field ID available)
+    // Fetch weather data from AGROmonitoring (if coordinates available)
     let weatherData: object | undefined = undefined;
-    if (farm.eosdaFieldId) {
+    if (farm.eosdaFieldId && farm.location && farm.location.coordinates) {
       try {
-        const forecastResponse = await this.eosdaService.weather.getForecast({
-          fieldId: farm.eosdaFieldId,
-          dateStart: new Date().toISOString().split('T')[0],
-          dateEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split('T')[0],
-        });
+        const [lon, lat] = farm.location.coordinates;
+        const forecastResponse = await this.agromonitoringService.weather.getWeatherForecast(
+          lat,
+          lon,
+        );
         if (forecastResponse) {
           weatherData = forecastResponse as object;
         }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to fetch weather data for farm ${farm._id}: ${error.message}`,
-        );
+      } catch (error: any) {
+        this.logger.warn(`Failed to fetch weather data for farm ${farm._id}: ${error.message}`);
       }
     }
 
@@ -99,9 +81,7 @@ export class CropMonitoringService {
       status: CropMonitoringStatus.IN_PROGRESS,
     });
 
-    this.logger.log(
-      `Crop monitoring cycle ${monitoringNumber} started for policy ${policyId}`,
-    );
+    this.logger.log(`Crop monitoring cycle ${monitoringNumber} started for policy ${policyId}`);
 
     return monitoring;
   }
@@ -126,9 +106,7 @@ export class CropMonitoringService {
     }
 
     if (monitoring.assessorId.toString() !== assessorId) {
-      throw new BadRequestException(
-        'Crop monitoring does not belong to this assessor',
-      );
+      throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
     // Validate monitoring is in progress
@@ -139,10 +117,7 @@ export class CropMonitoringService {
     }
 
     // Update monitoring
-    const updated = await this.cropMonitoringRepository.update(
-      monitoringId,
-      updateData,
-    );
+    const updated = await this.cropMonitoringRepository.update(monitoringId, updateData);
 
     return updated;
   }
@@ -151,10 +126,7 @@ export class CropMonitoringService {
    * Generate monitoring report
    * Validates completeness and sends to insurer
    */
-  async generateMonitoringReport(
-    assessorId: string,
-    monitoringId: string,
-  ): Promise<any> {
+  async generateMonitoringReport(assessorId: string, monitoringId: string): Promise<any> {
     // Validate monitoring exists and belongs to assessor
     const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
     if (!monitoring) {
@@ -162,16 +134,12 @@ export class CropMonitoringService {
     }
 
     if (monitoring.assessorId.toString() !== assessorId) {
-      throw new BadRequestException(
-        'Crop monitoring does not belong to this assessor',
-      );
+      throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
     // Validate monitoring is in progress
     if (monitoring.status !== CropMonitoringStatus.IN_PROGRESS) {
-      throw new BadRequestException(
-        `Cannot generate report. Current status: ${monitoring.status}`,
-      );
+      throw new BadRequestException(`Cannot generate report. Current status: ${monitoring.status}`);
     }
 
     // Validate required fields
@@ -205,17 +173,11 @@ export class CropMonitoringService {
 
     // Notify insurer
     try {
-      const policy = await this.policiesRepository.findById(
-        monitoring.policyId.toString(),
-      );
+      const policy = await this.policiesRepository.findById(monitoring.policyId.toString());
       if (policy) {
-        const insurer = await this.usersRepository.findById(
-          policy.insurerId.toString(),
-        );
+        const insurer = await this.usersRepository.findById(policy.insurerId.toString());
         if (insurer) {
-          const farm = await this.farmsRepository.findById(
-            monitoring.farmId.toString(),
-          );
+          const farm = await this.farmsRepository.findById(monitoring.farmId.toString());
           await this.emailService
             .sendMonitoringReportEmail(
               insurer.email,
@@ -224,22 +186,16 @@ export class CropMonitoringService {
               monitoringId,
               monitoring.monitoringNumber,
             )
-            .catch((error) => {
-              this.logger.error(
-                `Failed to send monitoring report email: ${error.message}`,
-              );
+            .catch(error => {
+              this.logger.error(`Failed to send monitoring report email: ${error.message}`);
             });
         }
       }
-    } catch (error) {
-      this.logger.error(
-        `Failed to notify insurer about monitoring report: ${error.message}`,
-      );
+    } catch (error: any) {
+      this.logger.error(`Failed to notify insurer about monitoring report: ${error.message}`);
     }
 
-    this.logger.log(
-      `Monitoring report generated for monitoring ${monitoringId}`,
-    );
+    this.logger.log(`Monitoring report generated for monitoring ${monitoringId}`);
 
     return updated;
   }
@@ -258,4 +214,3 @@ export class CropMonitoringService {
     return this.cropMonitoringRepository.findByPolicyId(policyId);
   }
 }
-

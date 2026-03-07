@@ -7,14 +7,11 @@ import { ClaimAssessmentsRepository } from './claim-assessments.repository';
 import { PayoutsRepository } from './payouts.repository';
 import { DamageAnalysisService } from './services/damage-analysis.service';
 import { Claim, ClaimSchema } from './schemas/claim.schema';
-import {
-  ClaimAssessment,
-  ClaimAssessmentSchema,
-} from './schemas/claim-assessment.schema';
+import { ClaimAssessment, ClaimAssessmentSchema } from './schemas/claim-assessment.schema';
 import { Payout, PayoutSchema } from './schemas/payout.schema';
 import { PoliciesModule } from '../policies/policies.module';
 import { FarmsModule } from '../farms/farms.module';
-import { EosdaModule } from '../eosda/eosda.module';
+import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { EmailModule } from '../email/email.module';
 import { UsersModule } from '../users/users.module';
 
@@ -27,7 +24,7 @@ import { UsersModule } from '../users/users.module';
     ]),
     PoliciesModule,
     FarmsModule,
-    EosdaModule,
+    AgromonitoringModule,
     EmailModule,
     UsersModule,
   ],
@@ -42,4 +39,3 @@ import { UsersModule } from '../users/users.module';
   exports: [ClaimsService, ClaimsRepository],
 })
 export class ClaimsModule {}
-

@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { EosdaService } from '../../eosda/eosda.service';
+import { AgromonitoringService } from '../../agromonitoring/agromonitoring.service';
 import { FarmsRepository } from '../../farms/farms.repository';
 
 @Injectable()
 export class DamageAnalysisService {
   constructor(
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private farmsRepository: FarmsRepository,
   ) {}
 
@@ -20,7 +20,7 @@ export class DamageAnalysisService {
   }> {
     const farm = await this.farmsRepository.findById(farmId);
     if (!farm || !farm.eosdaFieldId) {
-      throw new Error('Farm not found or not linked to EOSDA field');
+      throw new Error('Farm not found or not linked to AGROmonitoring field');
     }
 
     // Calculate date range for before (30 days before event) and after (7 days after)
@@ -34,33 +34,33 @@ export class DamageAnalysisService {
     afterEndDate.setDate(afterEndDate.getDate() + 7);
 
     // Get NDVI before event
-    const ndviBeforeData = await this.eosdaService.statistics.getNDVITimeSeries(
+    const ndviBeforeData = await this.agromonitoringService.fieldAnalytics.getNDVIData(
       {
         fieldId: farm.eosdaFieldId,
-        startDate: beforeStartDate.toISOString().split('T')[0],
-        endDate: beforeEndDate.toISOString().split('T')[0],
+        start: beforeStartDate.toISOString().split('T')[0],
+        end: beforeEndDate.toISOString().split('T')[0],
       },
     );
 
     // Get NDVI after event
-    const ndviAfterData = await this.eosdaService.statistics.getNDVITimeSeries({
+    const ndviAfterData = await this.agromonitoringService.fieldAnalytics.getNDVIData({
       fieldId: farm.eosdaFieldId,
-      startDate: afterStartDate.toISOString().split('T')[0],
-      endDate: afterEndDate.toISOString().split('T')[0],
+      start: afterStartDate.toISOString().split('T')[0],
+      end: afterEndDate.toISOString().split('T')[0],
     });
 
     // Calculate average NDVI before and after
-    const beforeValues =
-      ndviBeforeData.indices.NDVI?.map((d) => d.value) || [];
-    const afterValues = ndviAfterData.indices.NDVI?.map((d) => d.value) || [];
+    // AGROmonitoring returns an array with ndvi property directly
+    const beforeValues = ndviBeforeData.map((d: any) => d.ndvi).filter((v: any) => v !== null);
+    const afterValues = ndviAfterData.map((d: any) => d.ndvi).filter((v: any) => v !== null);
 
     const ndviBefore =
       beforeValues.length > 0
-        ? beforeValues.reduce((a, b) => a + b, 0) / beforeValues.length
+        ? beforeValues.reduce((a: number, b: number) => a + b, 0) / beforeValues.length
         : 0.5;
     const ndviAfter =
       afterValues.length > 0
-        ? afterValues.reduce((a, b) => a + b, 0) / afterValues.length
+        ? afterValues.reduce((a: number, b: number) => a + b, 0) / afterValues.length
         : 0.3;
 
     // Calculate damage percentage
@@ -89,7 +89,7 @@ export class DamageAnalysisService {
   }> {
     const farm = await this.farmsRepository.findById(farmId);
     if (!farm || !farm.eosdaFieldId) {
-      throw new Error('Farm not found or not linked to EOSDA field');
+      throw new Error('Farm not found or not linked to AGROmonitoring field');
     }
 
     // Get imagery before and after using scene search
@@ -98,42 +98,33 @@ export class DamageAnalysisService {
     const afterDate = new Date(eventDate);
     afterDate.setDate(afterDate.getDate() + 7);
 
-    // Search for scenes and get index images
+    // Search for available imagery
     const [beforeScenes, afterScenes] = await Promise.all([
-      this.eosdaService.fieldImagery.searchScenes({
+      this.agromonitoringService.fieldAnalytics.searchImagery({
         fieldId: farm.eosdaFieldId,
-        dateStart: beforeDate.toISOString().split('T')[0],
-        dateEnd: beforeDate.toISOString().split('T')[0],
-        maxCloudCoverage: 20,
+        start: beforeDate.toISOString().split('T')[0],
+        end: beforeDate.toISOString().split('T')[0],
+        clouds: 20,
       }),
-      this.eosdaService.fieldImagery.searchScenes({
+      this.agromonitoringService.fieldAnalytics.searchImagery({
         fieldId: farm.eosdaFieldId,
-        dateStart: afterDate.toISOString().split('T')[0],
-        dateEnd: afterDate.toISOString().split('T')[0],
-        maxCloudCoverage: 20,
+        start: afterDate.toISOString().split('T')[0],
+        end: afterDate.toISOString().split('T')[0],
+        clouds: 20,
       }),
     ]);
 
     let beforeImageUrl = '';
     let afterImageUrl = '';
 
-    // Get images if scenes are available
-    if (beforeScenes.result.length > 0) {
-      const beforeImage = await this.eosdaService.fieldImagery.getFieldIndexImage({
-        fieldId: farm.eosdaFieldId,
-        viewId: beforeScenes.result[0].view_id,
-        index: 'NDVI',
-      });
-      beforeImageUrl = beforeImage.image_url;
+    // Get preview URLs if imagery is available
+    // AGROmonitoring returns results array with preview_url
+    if (beforeScenes.results && beforeScenes.results.length > 0) {
+      beforeImageUrl = beforeScenes.results[0].preview_url || '';
     }
 
-    if (afterScenes.result.length > 0) {
-      const afterImage = await this.eosdaService.fieldImagery.getFieldIndexImage({
-        fieldId: farm.eosdaFieldId,
-        viewId: afterScenes.result[0].view_id,
-        index: 'NDVI',
-      });
-      afterImageUrl = afterImage.image_url;
+    if (afterScenes.results && afterScenes.results.length > 0) {
+      afterImageUrl = afterScenes.results[0].preview_url || '';
     }
 
     return {
@@ -142,4 +133,3 @@ export class DamageAnalysisService {
     };
   }
 }
-

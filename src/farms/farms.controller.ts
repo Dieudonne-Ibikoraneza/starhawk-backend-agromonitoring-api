@@ -324,6 +324,33 @@ export class FarmsController {
     return this.farmsService.findById(id);
   }
 
+  @Post(':id/register-agromonitoring')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER, Role.ASSESSOR, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Register existing farm with AGROmonitoring',
+    description:
+      'Creates AGROmonitoring field for farms that already have geometry but no eosdaFieldId',
+  })
+  @ApiResponse({
+    status: 200,
+    type: FarmResponseDto,
+    description: 'Farm successfully registered with AGROmonitoring',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - farm not found, no geometry, or already registered',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user not authorized',
+  })
+  async registerWithAgromonitoring(
+    @Param('id', UuidValidationPipe) id: string,
+  ): Promise<FarmResponseDto> {
+    return this.farmsService.registerWithAgromonitoring(id);
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Update farm' })
   @ApiResponse({ status: 200, type: FarmResponseDto })
