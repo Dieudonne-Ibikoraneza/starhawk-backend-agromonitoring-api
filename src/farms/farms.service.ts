@@ -468,7 +468,13 @@ export class FarmsService {
     if (farmerId) {
       filters.farmerId = new Types.ObjectId(farmerId);
     }
-    return this.farmsRepository.findAll(page, limit, filters);
+    const farms = await this.farmsRepository.findAll(page, limit, filters);
+
+    // Map each farm to include locationName
+    return {
+      ...farms,
+      items: farms.items.map(farm => this.mapToFarmResponse(farm)),
+    };
   }
 
   async findById(id: string): Promise<FarmResponseDto> {

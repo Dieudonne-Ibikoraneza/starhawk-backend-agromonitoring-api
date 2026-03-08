@@ -153,6 +153,8 @@ export class FarmsController {
   // These endpoints allow any authenticated user to view analytics data for a farm
 
   @Get(':id/weather/forecast')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get weather forecast for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({
@@ -170,6 +172,8 @@ export class FarmsController {
   }
 
   @Get(':id/weather/historical')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get historical weather data for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateEnd', required: true, description: 'End date (YYYY-MM-DD)' })
@@ -183,6 +187,8 @@ export class FarmsController {
   }
 
   @Get(':id/weather/accumulated')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get accumulated weather data (GDD, seasonal analysis) for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateEnd', required: true, description: 'End date (YYYY-MM-DD)' })
