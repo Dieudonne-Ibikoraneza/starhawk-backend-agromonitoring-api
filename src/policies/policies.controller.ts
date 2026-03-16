@@ -55,6 +55,10 @@ export class PoliciesController {
       return this.policiesService.getFarmerPolicies(user.userId);
     } else if (user.role === Role.INSURER) {
       return this.policiesService.getInsurerPolicies(user.userId);
+    } else if (user.role === Role.ASSESSOR) {
+      // Assessor needs visibility into policies for assigned farms
+      // to be able to start crop monitoring cycles.
+      return this.policiesService.getAssessorPolicies(user.userId);
     }
     return [];
   }
