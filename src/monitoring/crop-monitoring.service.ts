@@ -126,7 +126,13 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    if (monitoring.assessorId.toString() !== assessorId) {
+    // Handle populated assessorId (could be full User object or ObjectId)
+    const monitoringAssessorId =
+      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
+        ? (monitoring.assessorId as any)._id.toString()
+        : monitoring.assessorId.toString();
+
+    if (monitoringAssessorId !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -154,7 +160,13 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    if (monitoring.assessorId.toString() !== assessorId) {
+    // Handle populated assessorId (could be full User object or ObjectId)
+    const monitoringAssessorId =
+      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
+        ? (monitoring.assessorId as any)._id.toString()
+        : monitoring.assessorId.toString();
+
+    if (monitoringAssessorId !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
