@@ -153,6 +153,8 @@ export class FarmsController {
   // These endpoints allow any authenticated user to view analytics data for a farm
 
   @Get(':id/weather/forecast')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get weather forecast for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({
@@ -170,6 +172,8 @@ export class FarmsController {
   }
 
   @Get(':id/weather/historical')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get historical weather data for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateEnd', required: true, description: 'End date (YYYY-MM-DD)' })
@@ -183,6 +187,8 @@ export class FarmsController {
   }
 
   @Get(':id/weather/accumulated')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get accumulated weather data (GDD, seasonal analysis) for a farm' })
   @ApiQuery({ name: 'dateStart', required: true, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateEnd', required: true, description: 'End date (YYYY-MM-DD)' })
@@ -322,6 +328,33 @@ export class FarmsController {
   @ApiResponse({ status: 200, type: FarmResponseDto })
   async findById(@Param('id', UuidValidationPipe) id: string): Promise<FarmResponseDto> {
     return this.farmsService.findById(id);
+  }
+
+  @Post(':id/register-agromonitoring')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER, Role.ASSESSOR, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Register existing farm with AGROmonitoring',
+    description:
+      'Creates AGROmonitoring field for farms that already have geometry but no eosdaFieldId',
+  })
+  @ApiResponse({
+    status: 200,
+    type: FarmResponseDto,
+    description: 'Farm successfully registered with AGROmonitoring',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - farm not found, no geometry, or already registered',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user not authorized',
+  })
+  async registerWithAgromonitoring(
+    @Param('id', UuidValidationPipe) id: string,
+  ): Promise<FarmResponseDto> {
+    return this.farmsService.registerWithAgromonitoring(id);
   }
 
   @Put(':id')

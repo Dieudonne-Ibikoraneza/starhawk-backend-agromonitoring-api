@@ -5,7 +5,7 @@ import { MonitoringRepository } from './monitoring.repository';
 import { AlertsRepository } from './alerts.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { FarmsRepository } from '../farms/farms.repository';
-import { EosdaService } from '../eosda/eosda.service';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
 import { UsersRepository } from '../users/users.repository';
 import { AlertType, AlertSeverity } from './schemas/alert.schema';
@@ -19,7 +19,7 @@ export class MonitoringService {
     private alertsRepository: AlertsRepository,
     private policiesRepository: PoliciesRepository,
     private farmsRepository: FarmsRepository,
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
     private usersRepository: UsersRepository,
   ) {}
@@ -38,9 +38,7 @@ export class MonitoringService {
       try {
         await this.monitorFarm(policy);
       } catch (error) {
-        this.logger.error(
-          `Failed to monitor farm ${policy.farmId}: ${error.message}`,
-        );
+        this.logger.error(`Failed to monitor farm ${policy.farmId}: ${error.message}`);
       }
     }
 
@@ -56,16 +54,16 @@ export class MonitoringService {
     // Get current NDVI
     let currentNdvi: number | null = null;
     try {
-      const stats = await this.eosdaService.statistics.getNDVITimeSeries({
+      const stats = await this.agromonitoringService.fieldAnalytics.getNDVIData({
         fieldId: farm.eosdaFieldId,
-        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date().toISOString(),
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0],
       });
 
-      const ndviValues = stats.indices.NDVI || [];
+      // AGROmonitoring returns array with ndvi property directly
+      const ndviValues = stats.map((s: any) => s.ndvi).filter((v: any) => v !== null);
       if (ndviValues.length > 0) {
-        currentNdvi =
-          ndviValues.reduce((sum, d) => sum + d.value, 0) / ndviValues.length;
+        currentNdvi = ndviValues.reduce((sum: number, d: number) => sum + d, 0) / ndviValues.length;
       }
     } catch (error) {
       this.logger.warn(`Failed to fetch NDVI for farm ${farm._id}: ${error.message}`);
@@ -80,28 +78,20 @@ export class MonitoringService {
         const endDate = new Date();
         endDate.setDate(today.getDate() + 7); // 7 days ahead
 
-        const forecast = await this.eosdaService.weather.getForecast({
-          fieldId: farm.eosdaFieldId,
-          dateStart: today.toISOString().split('T')[0],
-          dateEnd: endDate.toISOString().split('T')[0],
-        });
+        if (farm.location && farm.location.coordinates) {
+          const [lon, lat] = farm.location.coordinates;
+          const forecast = await this.agromonitoringService.weather.getWeatherForecast(lat, lon);
 
-        // Check for severe weather
-        // WeatherForecastResponse has 'forecast' property, not 'data'
-        if (forecast.forecast && Array.isArray(forecast.forecast)) {
-          forecast.forecast.forEach((weather) => {
-            if (weather.rainfall && weather.rainfall > 100) {
-              weatherAlerts.push(
-                `Heavy rainfall warning: ${weather.rainfall}mm on ${weather.date}`,
-              );
-            }
-            // WeatherForecastDataPoint has temperature_min and temperature_max as direct properties
-            if (weather.temperature_max > 35 || weather.temperature_min < 5) {
-              weatherAlerts.push(
-                `Extreme temperature: Max ${weather.temperature_max}°C, Min ${weather.temperature_min}°C on ${weather.date}`,
-              );
-            }
-          });
+          // Check for severe weather
+          // AGROmonitoring returns 'data' not 'forecast'
+          if (forecast.data && Array.isArray(forecast.data)) {
+            forecast.data.forEach((weather: any) => {
+              const rainfall = weather.rain?.['1h'] || weather.rain?.['3h'] || 0;
+              if (rainfall > 10) {
+                weatherAlerts.push(`Heavy rainfall warning: ${rainfall}mm`);
+              }
+            });
+          }
         }
       } else if (farm.location) {
         // Legacy method is deprecated and throws an error, so skip it
@@ -117,8 +107,7 @@ export class MonitoringService {
     let ndviTrend = 0;
     const farmId = farm._id as any;
     const policyId = policy._id as any;
-    const previousRecord =
-      await this.monitoringRepository.findLatestByFarmId(farmId.toString());
+    const previousRecord = await this.monitoringRepository.findLatestByFarmId(farmId.toString());
     if (previousRecord && currentNdvi !== null) {
       const change = currentNdvi - (previousRecord.currentNdvi || 0);
       if (change < -0.1) {
@@ -130,9 +119,7 @@ export class MonitoringService {
 
     // Check thresholds
     const thresholdsExceeded =
-      (currentNdvi !== null && currentNdvi < 0.3) ||
-      weatherAlerts.length > 0 ||
-      ndviTrend === -1;
+      (currentNdvi !== null && currentNdvi < 0.3) || weatherAlerts.length > 0 || ndviTrend === -1;
 
     // Create monitoring record
     const record = await this.monitoringRepository.create({
@@ -158,9 +145,7 @@ export class MonitoringService {
     currentNdvi: number | null,
     weatherAlerts: string[],
   ) {
-    const farmer = await this.usersRepository.findById(
-      policy.farmerId.toString(),
-    );
+    const farmer = await this.usersRepository.findById(policy.farmerId.toString());
     if (!farmer) {
       return;
     }
@@ -234,4 +219,3 @@ export class MonitoringService {
     return this.alertsRepository.markAsRead(alertId);
   }
 }
-

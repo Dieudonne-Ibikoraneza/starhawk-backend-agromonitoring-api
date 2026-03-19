@@ -28,11 +28,31 @@ export class PoliciesRepository {
   }
 
   async findByFarmerId(farmerId: string): Promise<PolicyDocument[]> {
-    return this.policyModel.find({ farmerId }).exec();
+    // Convert string ID to ObjectId for proper MongoDB query
+    const farmerObjectId = new Types.ObjectId(farmerId);
+    return this.policyModel
+      .find({
+        $or: [
+          { farmerId: farmerObjectId },
+          { 'farmerId._id': farmerObjectId },
+          { 'farmerId.id': farmerObjectId },
+        ],
+      })
+      .exec();
   }
 
   async findByInsurerId(insurerId: string): Promise<PolicyDocument[]> {
-    return this.policyModel.find({ insurerId }).exec();
+    // Convert string ID to ObjectId for proper MongoDB query
+    const insurerObjectId = new Types.ObjectId(insurerId);
+    return this.policyModel
+      .find({
+        $or: [
+          { insurerId: insurerObjectId },
+          { 'insurerId._id': insurerObjectId },
+          { 'insurerId.id': insurerObjectId },
+        ],
+      })
+      .exec();
   }
 
   async findByPolicyNumber(policyNumber: string): Promise<PolicyDocument | null> {

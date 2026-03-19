@@ -10,7 +10,7 @@ import { FarmsRepository } from './farms.repository';
 import { InsuranceRequestsRepository } from './insurance-requests.repository';
 import { ShapefileParserService } from './services/shapefile-parser.service';
 import { LocationService } from './services/location.service';
-import { EosdaService } from '../eosda/eosda.service';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { AssessmentsService } from '../assessments/assessments.service';
 import { EmailService } from '../email/email.service';
 import { UsersRepository } from '../users/users.repository';
@@ -30,7 +30,7 @@ export class FarmsService {
     private insuranceRequestsRepository: InsuranceRequestsRepository,
     private shapefileParser: ShapefileParserService,
     private locationService: LocationService,
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private assessmentsService: AssessmentsService,
     private emailService: EmailService,
     private usersRepository: UsersRepository,
@@ -174,7 +174,7 @@ export class FarmsService {
       );
 
       eosdaFieldId = eosdaField.id.toString();
-      eosdaArea = eosdaField.area;
+      eosdaArea = String(eosdaField.area); // AGROmonitoring returns area directly in hectares
 
       this.logger.log(
         `✅ EOSDA field created successfully - Field ID: ${eosdaFieldId}, Area: ${eosdaArea} hectares`,
@@ -244,7 +244,7 @@ export class FarmsService {
 
       // Extract EOSDA field ID (can be number or string)
       eosdaFieldId = eosdaField.id.toString();
-      eosdaArea = eosdaField.area;
+      eosdaArea = String(eosdaField.area); // AGROmonitoring returns area directly in hectares
 
       this.logger.log(
         `✅ EOSDA field created successfully - Field ID: ${eosdaFieldId}, Area: ${eosdaArea} hectares`,
@@ -310,7 +310,7 @@ export class FarmsService {
 
       // Extract EOSDA field ID (can be number or string)
       eosdaFieldId = eosdaField.id.toString();
-      eosdaArea = eosdaField.area;
+      eosdaArea = String(eosdaField.area); // AGROmonitoring returns area directly in hectares
 
       this.logger.log(
         `✅ EOSDA field created successfully - Field ID: ${eosdaFieldId}, Area: ${eosdaArea} hectares`,
@@ -372,7 +372,7 @@ export class FarmsService {
 
       // Extract EOSDA field ID (can be number or string)
       eosdaFieldId = eosdaField.id.toString();
-      eosdaArea = eosdaField.area;
+      eosdaArea = String(eosdaField.area); // AGROmonitoring returns area directly in hectares
 
       this.logger.log(
         `✅ EOSDA field created successfully - Field ID: ${eosdaFieldId}, Area: ${eosdaArea} hectares`,
@@ -447,15 +447,17 @@ export class FarmsService {
     }
 
     // Create field in EOSDA with proper format
-    const eosdaField = await this.eosdaService.fieldManagement.createField({
+    const eosdaField = await this.agromonitoringService.fieldManagement.createField({
       name: farmName,
-      geometry: boundary,
+      geo_json: { type: 'Feature', properties: { name: '' }, geometry: boundary },
       cropType,
       year: new Date().getFullYear(),
       sowingDate: sowingDateStr,
     });
 
-    this.logger.debug(`EOSDA API Response received: id=${eosdaField.id}, area=${eosdaField.area}`);
+    this.logger.debug(
+      `EOSDA API Response received: id=${eosdaField.id}, area=${String(eosdaField.area)}`,
+    );
 
     return eosdaField;
   }
@@ -466,7 +468,13 @@ export class FarmsService {
     if (farmerId) {
       filters.farmerId = new Types.ObjectId(farmerId);
     }
-    return this.farmsRepository.findAll(page, limit, filters);
+    const farms = await this.farmsRepository.findAll(page, limit, filters);
+
+    // Map each farm to include locationName
+    return {
+      ...farms,
+      items: farms.items.map(farm => this.mapToFarmResponse(farm)),
+    };
   }
 
   async findById(id: string): Promise<FarmResponseDto> {
@@ -495,7 +503,7 @@ export class FarmsService {
     // Build response with location name
     const response = this.mapToFarmResponse(farm);
     response.locationName = locationName;
-    
+
     return response;
   }
 
@@ -527,8 +535,8 @@ export class FarmsService {
     if (updateData.boundary && updatedFarm?.eosdaFieldId) {
       try {
         this.logger.log(`Updating EOSDA field ${updatedFarm.eosdaFieldId} for farm ${id}`);
-        await this.eosdaService.fieldManagement.updateField(updatedFarm.eosdaFieldId, {
-          geometry: updateData.boundary,
+        await this.agromonitoringService.fieldManagement.updateField(updatedFarm.eosdaFieldId, {
+          geo_json: { type: 'Feature', properties: { name: '' }, geometry: updateData.boundary },
           ...(updateData.name && { name: updateData.name }),
           ...(updateData.cropType && { cropType: updateData.cropType }),
         });
@@ -752,45 +760,46 @@ export class FarmsService {
 
   /**
    * Get weather forecast for a farm
-   * Uses farm's eosdaFieldId if available, otherwise boundary geometry
+   * Uses farm's coordinates to call AGROmonitoring weather API
    */
   async getWeatherForecast(farmId: string, dateStart: string, dateEnd: string) {
     const farm = await this.getFarmForAnalytics(farmId);
 
-    if (!farm.eosdaFieldId) {
+    if (!farm.location || !farm.location.coordinates) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for weather forecast. Please register the farm with EOSDA first.',
+        'Farm must have location coordinates for weather forecast. Please ensure farm has location data.',
       );
     }
 
-    return this.eosdaService.weather.getForecast({
-      fieldId: farm.eosdaFieldId,
-      dateStart,
-      dateEnd,
-    });
+    const [lon, lat] = farm.location.coordinates;
+    return this.agromonitoringService.weather.getWeatherForecast(lat, lon);
   }
 
   /**
    * Get historical weather data for a farm
+   * Uses farm's coordinates to call AGROmonitoring weather API
    */
   async getHistoricalWeather(farmId: string, dateStart: string, dateEnd: string) {
     const farm = await this.getFarmForAnalytics(farmId);
 
-    if (!farm.eosdaFieldId) {
+    if (!farm.location || !farm.location.coordinates) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for historical weather. Please register the farm with EOSDA first.',
+        'Farm must have location coordinates for historical weather. Please ensure farm has location data.',
       );
     }
 
-    return this.eosdaService.weather.getHistoricalWeather({
-      fieldId: farm.eosdaFieldId,
+    const [lon, lat] = farm.location.coordinates;
+    return this.agromonitoringService.weather.getWeatherHistory({
+      lat,
+      lon,
       dateStart,
       dateEnd,
     });
   }
 
   /**
-   * Get accumulated weather data (GDD, seasonal analysis) for a farm
+   * Get accumulated weather data for a farm
+   * Uses farm's coordinates to call AGROmonitoring weather API
    */
   async getAccumulatedWeather(
     farmId: string,
@@ -801,19 +810,14 @@ export class FarmsService {
   ) {
     const farm = await this.getFarmForAnalytics(farmId);
 
-    if (!farm.eosdaFieldId) {
+    if (!farm.location || !farm.location.coordinates) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for accumulated weather. Please register the farm with EOSDA first.',
+        'Farm must have location coordinates for accumulated weather. Please ensure farm has location data.',
       );
     }
 
-    return this.eosdaService.weather.getHistoricalAccumulated({
-      fieldId: farm.eosdaFieldId,
-      dateStart,
-      dateEnd,
-      sumOfActiveTemperatures,
-      provider,
-    });
+    const [lon, lat] = farm.location.coordinates;
+    return this.agromonitoringService.weather.getAccumulatedWeather(lat, lon, dateStart, dateEnd);
   }
 
   /**
@@ -849,7 +853,11 @@ export class FarmsService {
       request.geometry = farm.boundary;
     }
 
-    return this.eosdaService.statistics.getStatistics(request);
+    return this.agromonitoringService.fieldAnalytics.getStatistics({
+      fieldId: farm.eosdaFieldId,
+      startDate: dateStart,
+      endDate: dateEnd,
+    });
   }
 
   /**
@@ -872,7 +880,7 @@ export class FarmsService {
       request.geometry = farm.boundary;
     }
 
-    return this.eosdaService.statistics.getNDVITimeSeries(request);
+    return this.agromonitoringService.fieldAnalytics.getNDVITimeSeries(request);
   }
 
   /**
@@ -885,21 +893,115 @@ export class FarmsService {
     dateEnd: string,
     index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
     dataSource?: 'S2' | 'S1',
-  ) {
+  ): Promise<any> {
     const farm = await this.getFarmForAnalytics(farmId);
 
     if (!farm.eosdaFieldId) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for field trend. Please register the farm with EOSDA first.',
+        'Farm must have EOSDA field ID for field trend. Please register farm with EOSDA first.',
       );
     }
 
-    return this.eosdaService.fieldAnalytics.getFieldTrend({
+    return this.agromonitoringService.fieldAnalytics.getNDVIData({
       fieldId: farm.eosdaFieldId,
-      dateStart,
-      dateEnd,
-      index: index || 'NDVI',
-      dataSource: dataSource || 'S2',
+      start: dateStart,
+      end: dateEnd,
     });
+  }
+
+  /**
+   * Get NDVI data for a farm
+   */
+  async getNDVIData(
+    farmId: string,
+    dateStart: string,
+    dateEnd: string,
+    index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
+    dataSource?: 'S2' | 'S1',
+  ): Promise<any> {
+    const farm = await this.getFarmForAnalytics(farmId);
+
+    if (!farm.eosdaFieldId) {
+      throw new BadRequestException(
+        'Farm must have EOSDA field ID for field trend. Please register farm with EOSDA first.',
+      );
+    }
+
+    return this.agromonitoringService.fieldAnalytics.getNDVIData({
+      fieldId: farm.eosdaFieldId,
+      start: dateStart,
+      end: dateEnd,
+    });
+  }
+
+  /**
+   * Register existing farm with AGROmonitoring
+   * This method creates AGROmonitoring field for farms that already have geometry
+   */
+  async registerWithAgromonitoring(farmId: string): Promise<FarmResponseDto> {
+    this.logger.log(`Registering farm ${farmId} with AGROmonitoring`);
+
+    // Get farm with geometry
+    const farm = await this.farmsRepository.findById(farmId);
+    if (!farm) {
+      throw new NotFoundException('Farm', farmId);
+    }
+
+    if (!farm.boundary) {
+      throw new BadRequestException(
+        'Farm must have boundary geometry to register with AGROmonitoring',
+      );
+    }
+
+    if (farm.eosdaFieldId) {
+      this.logger.log(
+        `Farm ${farmId} already registered with AGROmonitoring (Field ID: ${farm.eosdaFieldId})`,
+      );
+      return this.mapToFarmResponse(farm);
+    }
+
+    // Create AGROmonitoring field using existing geometry
+    let eosdaFieldId: string | undefined;
+    let eosdaArea: string | undefined;
+    try {
+      const eosdaField = await this.createEosdaField(
+        farm.name || 'Unknown Farm',
+        farm.boundary,
+        farm.cropType,
+        farm.sowingDate ? new Date(farm.sowingDate) : undefined,
+      );
+
+      eosdaFieldId = eosdaField.id.toString();
+      eosdaArea = String(eosdaField.area); // AGROmonitoring returns area directly in hectares
+
+      this.logger.log(
+        ` AGROmonitoring field created successfully - Field ID: ${eosdaFieldId}, Area: ${eosdaArea} hectares`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to create AGROmonitoring field: ${error.message}. Farm registration aborted.`,
+      );
+
+      // Provide more user-friendly error messages for common AGROmonitoring validation errors
+      if (error.message.includes('must be from 1 to 3000 ha')) {
+        throw new BadRequestException(
+          `Farm area is too small for AGROmonitoring registration. Farm must be between 1-3000 hectares, but current farm is ${farm.area ? (farm.area / 10000).toFixed(2) : 'unknown'} hectares. Please ensure farm boundary covers at least 1 hectare.`,
+        );
+      }
+
+      throw new BadRequestException(
+        `Failed to register farm with AGROmonitoring: ${error.message}. Please ensure AGROmonitoring API is configured correctly.`,
+      );
+    }
+
+    // Update farm with AGROmonitoring field ID
+    const updatedFarm = await this.farmsRepository.update(farmId, {
+      eosdaFieldId,
+      status: FarmStatus.REGISTERED,
+    });
+
+    this.logger.log(` Farm ${farmId} registered with AGROmonitoring - Field ID: ${eosdaFieldId}`);
+
+    return this.mapToFarmResponse(updatedFarm);
   }
 }

@@ -9,7 +9,7 @@ import { RiskScoringService } from './services/risk-scoring.service';
 import { DroneAnalysisService } from './services/drone-analysis.service';
 import { FarmsModule } from '../farms/farms.module';
 import { UsersModule } from '../users/users.module';
-import { EosdaModule } from '../eosda/eosda.module';
+import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { EmailModule } from '../email/email.module';
 
 @Module({
@@ -20,7 +20,7 @@ import { EmailModule } from '../email/email.module';
     HttpModule,
     forwardRef(() => FarmsModule),
     UsersModule,
-    EosdaModule,
+    AgromonitoringModule,
     EmailModule,
   ],
   controllers: [AssessmentsController],

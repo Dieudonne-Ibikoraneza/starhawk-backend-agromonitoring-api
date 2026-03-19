@@ -15,7 +15,7 @@ import {
 } from './schemas/crop-monitoring.schema';
 import { PoliciesModule } from '../policies/policies.module';
 import { FarmsModule } from '../farms/farms.module';
-import { EosdaModule } from '../eosda/eosda.module';
+import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { EmailModule } from '../email/email.module';
 import { UsersModule } from '../users/users.module';
 import { CropMonitoringRepository } from './crop-monitoring.repository';
@@ -31,7 +31,7 @@ import { CropMonitoringController } from './crop-monitoring.controller';
     ]),
     PoliciesModule,
     FarmsModule,
-    EosdaModule,
+    AgromonitoringModule,
     EmailModule,
     UsersModule,
   ],

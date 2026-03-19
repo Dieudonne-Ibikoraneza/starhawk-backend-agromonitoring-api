@@ -10,7 +10,7 @@ import { UsersModule } from './users/users.module';
 import { NidaModule } from './nida/nida.module';
 import { EmailModule } from './email/email.module';
 import { FarmsModule } from './farms/farms.module';
-import { EosdaModule } from './eosda/eosda.module';
+import { AgromonitoringModule } from './agromonitoring/agromonitoring.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ClaimsModule } from './claims/claims.module';
@@ -49,7 +49,7 @@ dns.setServers(['8.8.8.8', '8.8.4.4']);
     NidaModule,
     EmailModule,
     FarmsModule,
-    EosdaModule,
+    AgromonitoringModule,
     AssessmentsModule,
     PoliciesModule,
     ClaimsModule,

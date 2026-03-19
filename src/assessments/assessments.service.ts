@@ -4,7 +4,7 @@ import { AssessmentsRepository } from './assessments.repository';
 import { FarmsRepository } from '../farms/farms.repository';
 import { UsersRepository } from '../users/users.repository';
 import { ProfilesRepository } from '../users/profiles.repository';
-import { EosdaService } from '../eosda/eosda.service';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
 import { RiskScoringService } from './services/risk-scoring.service';
 import { DroneAnalysisService } from './services/drone-analysis.service';
@@ -30,7 +30,7 @@ export class AssessmentsService {
     private farmsRepository: FarmsRepository,
     private usersRepository: UsersRepository,
     private profilesRepository: ProfilesRepository,
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
     private riskScoringService: RiskScoringService,
     private droneAnalysisService: DroneAnalysisService,
@@ -137,15 +137,17 @@ export class AssessmentsService {
 
     // Get weather data - requires fieldId (EOSDA field must exist)
     let weatherData: any[] = [];
-    if (farm.eosdaFieldId) {
+    if (farm.eosdaFieldId && farm.location && farm.location.coordinates) {
       try {
-        const weatherResponse = await this.eosdaService.weather.getHistoricalWeather({
-          fieldId: farm.eosdaFieldId,
+        const [lon, lat] = farm.location.coordinates;
+        const weatherResponse = await this.agromonitoringService.weather.getWeatherHistory({
+          lat,
+          lon,
           dateStart: startDate.toISOString().split('T')[0],
           dateEnd: endDate.toISOString().split('T')[0],
         });
         // Convert historical_data to format expected by risk scoring
-        weatherData = weatherResponse.historical_data.map(point => ({
+        weatherData = weatherResponse.data.map((point: any) => ({
           date: point.date,
           rainfall: point.rainfall,
           temperature: {
@@ -164,16 +166,17 @@ export class AssessmentsService {
     let ndviData: any[] = [];
     if (farm.eosdaFieldId) {
       try {
-        const statsResponse = await this.eosdaService.statistics.getNDVITimeSeries({
+        const statsResponse = await this.agromonitoringService.fieldAnalytics.getNDVIData({
           fieldId: farm.eosdaFieldId,
-          startDate: startDate.toISOString().split('T')[0],
-          endDate: endDate.toISOString().split('T')[0],
+          start: startDate.toISOString().split('T')[0],
+          end: endDate.toISOString().split('T')[0],
         });
         // Convert to format expected by risk scoring
+        // AGROmonitoring returns array with ndvi property directly
         ndviData =
-          statsResponse.indices.NDVI?.map(point => ({
+          (statsResponse as any).map((point: any) => ({
             date: point.date,
-            value: point.value,
+            value: point.ndvi,
           })) || [];
       } catch (error) {
         // Log but continue with empty NDVI data
@@ -706,14 +709,18 @@ export class AssessmentsService {
       const startDate = new Date();
       startDate.setFullYear(startDate.getFullYear() - 3); // 3 years of historical data
 
-      const weatherResponse = await this.eosdaService.weather.getHistoricalWeather({
-        fieldId: farm.eosdaFieldId,
-        dateStart: startDate.toISOString().split('T')[0],
-        dateEnd: endDate.toISOString().split('T')[0],
-      });
+      if (farm.location && farm.location.coordinates) {
+        const [lon, lat] = farm.location.coordinates;
+        const weatherResponse = await this.agromonitoringService.weather.getWeatherHistory({
+          lat,
+          lon,
+          dateStart: startDate.toISOString().split('T')[0],
+          dateEnd: endDate.toISOString().split('T')[0],
+        });
 
-      // Return the full weather response for the report
-      return weatherResponse;
+        // Return the full weather response for the report
+        return weatherResponse;
+      }
     } catch (error) {
       console.error('Failed to fetch weather data from EOSDA:', error);
       return null;

@@ -3,7 +3,7 @@ import { CropMonitoringRepository } from './crop-monitoring.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { FarmsRepository } from '../farms/farms.repository';
 import { UsersRepository } from '../users/users.repository';
-import { EosdaService } from '../eosda/eosda.service';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
 import { CropMonitoringStatus } from './schemas/crop-monitoring.schema';
 import { Types } from 'mongoose';
@@ -17,7 +17,7 @@ export class CropMonitoringService {
     private policiesRepository: PoliciesRepository,
     private farmsRepository: FarmsRepository,
     private usersRepository: UsersRepository,
-    private eosdaService: EosdaService,
+    private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
   ) {}
 
@@ -27,15 +27,19 @@ export class CropMonitoringService {
    */
   async startMonitoring(assessorId: string, policyId: string): Promise<any> {
     // Validate policy exists
-    console.log('🔍 Looking up policy:', policyId);
+    this.logger.log(`Looking up policy: ${policyId}`);
     const policy = await this.policiesRepository.findById(policyId);
-    console.log('🔍 Policy found:', {
-      policyId,
-      found: !!policy,
-      status: policy?.status,
-      statusType: typeof policy?.status,
-      object: JSON.stringify(policy, null, 2),
-    });
+    this.logger.debug(
+      `Policy lookup result: ${JSON.stringify(
+        {
+          policyId,
+          found: !!policy,
+          status: policy?.status,
+        },
+        null,
+        2,
+      )}`,
+    );
 
     if (!policy) {
       throw new NotFoundException('Policy', policyId);
@@ -47,9 +51,9 @@ export class CropMonitoringService {
     }
 
     // Check existing monitoring cycles for this policy
-    console.log('🔍 Checking existing monitoring cycles for policy:', policyId);
+    this.logger.log(`Checking existing monitoring cycles for policy: ${policyId}`);
     const existingCount = await this.cropMonitoringRepository.countByPolicyId(policyId);
-    console.log('🔍 Existing count:', existingCount);
+    this.logger.debug(`Existing monitoring cycles count: ${existingCount}`);
 
     if (existingCount >= 2) {
       throw new BadRequestException('Maximum 2 monitoring cycles allowed per policy');
@@ -64,25 +68,25 @@ export class CropMonitoringService {
         ? ((policy as any).farmId._id ?? (policy as any).farmId).toString()
         : policy.farmId.toString();
 
-    // Get farm for EOSDA data
+    // Get farm for AGROmonitoring data
     const farm = await this.farmsRepository.findById(resolvedFarmId);
     if (!farm) {
       throw new NotFoundException('Farm', policy.farmId.toString());
     }
 
-    // Fetch weather data from EOSDA (if field ID available)
+    // Fetch weather data from AGROmonitoring (if coordinates available)
     let weatherData: object | undefined = undefined;
-    if (farm.eosdaFieldId) {
+    if (farm.location && farm.location.coordinates) {
       try {
-        const forecastResponse = await this.eosdaService.weather.getForecast({
-          fieldId: farm.eosdaFieldId,
-          dateStart: new Date().toISOString().split('T')[0],
-          dateEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        });
+        const [lon, lat] = farm.location.coordinates;
+        const forecastResponse = await this.agromonitoringService.weather.getWeatherForecast(
+          lat,
+          lon,
+        );
         if (forecastResponse) {
           weatherData = forecastResponse as object;
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.warn(`Failed to fetch weather data for farm ${farm._id}: ${error.message}`);
       }
     }
@@ -208,7 +212,7 @@ export class CropMonitoringService {
             });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to notify insurer about monitoring report: ${error.message}`);
     }
 
