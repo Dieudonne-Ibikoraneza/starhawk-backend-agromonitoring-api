@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Policy, PolicyDocument } from './schemas/policy.schema';
 
 @Injectable()
 export class PoliciesRepository {
-  constructor(
-    @InjectModel(Policy.name) private policyModel: Model<PolicyDocument>,
-  ) {}
+  constructor(@InjectModel(Policy.name) private policyModel: Model<PolicyDocument>) {}
 
   async create(policyData: Partial<Policy>): Promise<PolicyDocument> {
     const policy = new this.policyModel({
@@ -18,8 +16,10 @@ export class PoliciesRepository {
   }
 
   async findById(id: string): Promise<PolicyDocument | null> {
+    // Convert string ID to ObjectId for proper MongoDB query
+    const objectId = new Types.ObjectId(id);
     return this.policyModel
-      .findById(id)
+      .findById(objectId)
       .populate('farmerId')
       .populate('farmId')
       .populate('insurerId')
@@ -35,9 +35,7 @@ export class PoliciesRepository {
     return this.policyModel.find({ insurerId }).exec();
   }
 
-  async findByPolicyNumber(
-    policyNumber: string,
-  ): Promise<PolicyDocument | null> {
+  async findByPolicyNumber(policyNumber: string): Promise<PolicyDocument | null> {
     return this.policyModel.findOne({ policyNumber }).exec();
   }
 
@@ -45,13 +43,8 @@ export class PoliciesRepository {
     return this.policyModel.find(filters || {}).exec();
   }
 
-  async update(
-    id: string,
-    updateData: Partial<Policy>,
-  ): Promise<PolicyDocument | null> {
-    return this.policyModel
-      .findByIdAndUpdate(id, updateData, { new: true })
-      .exec();
+  async update(id: string, updateData: Partial<Policy>): Promise<PolicyDocument | null> {
+    return this.policyModel.findByIdAndUpdate(id, updateData, { new: true }).exec();
   }
 
   generatePolicyNumber(): string {
@@ -60,4 +53,3 @@ export class PoliciesRepository {
     return `POL-${timestamp}-${random}`;
   }
 }
-

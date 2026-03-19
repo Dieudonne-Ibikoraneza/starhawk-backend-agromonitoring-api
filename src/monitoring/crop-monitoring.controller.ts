@@ -6,13 +6,9 @@ import {
   Body,
   Param,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CropMonitoringService } from './crop-monitoring.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -20,29 +16,33 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../users/enums/role.enum';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { ValidationPipe } from '@nestjs/common';
+import { StartMonitoringDto } from './dto/start-monitoring.dto';
 
 @ApiTags('Crop Monitoring')
 @ApiBearerAuth()
 @Controller('crop-monitoring')
 @UseGuards(JwtAuthGuard)
 export class CropMonitoringController {
-  constructor(
-    private readonly cropMonitoringService: CropMonitoringService,
-  ) {}
+  constructor(private readonly cropMonitoringService: CropMonitoringService) {}
 
   @Post('start')
   @UseGuards(RolesGuard)
   @Roles(Role.ASSESSOR)
   @ApiOperation({ summary: 'Start a new crop monitoring cycle (Assessor only)' })
   @ApiResponse({ status: 201 })
-  async startMonitoring(
-    @CurrentUser() user: any,
-    @Body() body: { policyId: string },
-  ) {
-    return this.cropMonitoringService.startMonitoring(
-      user.userId,
-      body.policyId,
-    );
+  async startMonitoring(@CurrentUser() user: any, @Body() body: StartMonitoringDto) {
+    // Manual validation as fallback
+    console.log(' Raw request body received:', JSON.stringify(body, null, 2));
+    console.log(' Parsed body:', body);
+
+    if (!body || !body.policyId) {
+      console.log(' Validation failed - body:', body);
+      throw new BadRequestException('Policy ID is required');
+    }
+
+    console.log(' Manual validation - policyId:', body.policyId);
+    return this.cropMonitoringService.startMonitoring(user.userId, body.policyId);
   }
 
   @Put(':id')
@@ -53,18 +53,15 @@ export class CropMonitoringController {
   async updateMonitoring(
     @CurrentUser() user: any,
     @Param('id', UuidValidationPipe) id: string,
-    @Body() updateData: {
+    @Body()
+    updateData: {
       observations?: string[];
       photoUrls?: string[];
       notes?: string;
       ndviData?: object;
     },
   ) {
-    return this.cropMonitoringService.updateMonitoring(
-      user.userId,
-      id,
-      updateData,
-    );
+    return this.cropMonitoringService.updateMonitoring(user.userId, id, updateData);
   }
 
   @Post(':id/generate-report')
@@ -74,14 +71,8 @@ export class CropMonitoringController {
     summary: 'Generate crop monitoring report (Assessor only)',
   })
   @ApiResponse({ status: 200 })
-  async generateReport(
-    @CurrentUser() user: any,
-    @Param('id', UuidValidationPipe) id: string,
-  ) {
-    return this.cropMonitoringService.generateMonitoringReport(
-      user.userId,
-      id,
-    );
+  async generateReport(@CurrentUser() user: any, @Param('id', UuidValidationPipe) id: string) {
+    return this.cropMonitoringService.generateMonitoringReport(user.userId, id);
   }
 
   @Get()
@@ -90,9 +81,7 @@ export class CropMonitoringController {
   async getMonitoringTasks(@CurrentUser() user: any) {
     // ASSESSOR: See their monitoring tasks
     if (user.role === Role.ASSESSOR) {
-      return this.cropMonitoringService.getAssessorMonitoringTasks(
-        user.userId,
-      );
+      return this.cropMonitoringService.getAssessorMonitoringTasks(user.userId);
     }
     // ADMIN/INSURER: See all (can be extended later)
     return [];
@@ -101,10 +90,7 @@ export class CropMonitoringController {
   @Get('policy/:policyId')
   @ApiOperation({ summary: 'Get all monitoring records for a policy' })
   @ApiResponse({ status: 200 })
-  async getPolicyMonitoring(
-    @Param('policyId', UuidValidationPipe) policyId: string,
-  ) {
+  async getPolicyMonitoring(@Param('policyId', UuidValidationPipe) policyId: string) {
     return this.cropMonitoringService.getPolicyMonitoringRecords(policyId);
   }
 }
-

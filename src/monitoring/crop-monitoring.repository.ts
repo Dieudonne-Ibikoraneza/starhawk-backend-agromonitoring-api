@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import {
-  CropMonitoring,
-  CropMonitoringDocument,
-} from './schemas/crop-monitoring.schema';
+import { CropMonitoring, CropMonitoringDocument } from './schemas/crop-monitoring.schema';
 import { Types } from 'mongoose';
 
 @Injectable()
@@ -14,9 +11,7 @@ export class CropMonitoringRepository {
     private cropMonitoringModel: Model<CropMonitoringDocument>,
   ) {}
 
-  async create(
-    data: Partial<CropMonitoring>,
-  ): Promise<CropMonitoringDocument> {
+  async create(data: Partial<CropMonitoring>): Promise<CropMonitoringDocument> {
     const cropMonitoring = new this.cropMonitoringModel(data);
     return cropMonitoring.save();
   }
@@ -30,9 +25,7 @@ export class CropMonitoringRepository {
       .exec();
   }
 
-  async findByPolicyId(
-    policyId: string,
-  ): Promise<CropMonitoringDocument[]> {
+  async findByPolicyId(policyId: string): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find({ policyId: new Types.ObjectId(policyId) })
       .populate('policyId')
@@ -42,9 +35,7 @@ export class CropMonitoringRepository {
       .exec();
   }
 
-  async findByAssessorId(
-    assessorId: string,
-  ): Promise<CropMonitoringDocument[]> {
+  async findByAssessorId(assessorId: string): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find({ assessorId: new Types.ObjectId(assessorId) })
       .populate('policyId')
@@ -55,9 +46,17 @@ export class CropMonitoringRepository {
   }
 
   async countByPolicyId(policyId: string): Promise<number> {
-    return this.cropMonitoringModel
-      .countDocuments({ policyId: new Types.ObjectId(policyId) })
-      .exec();
+    const objectId = new Types.ObjectId(policyId);
+    console.log(' Counting monitoring cycles for policy:', {
+      policyId,
+      objectId,
+      objectIdString: objectId.toString(),
+    });
+
+    const result = await this.cropMonitoringModel.countDocuments({ policyId: objectId }).exec();
+
+    console.log(' Count result:', result);
+    return result;
   }
 
   async update(
@@ -82,4 +81,3 @@ export class CropMonitoringRepository {
       .exec();
   }
 }
-
