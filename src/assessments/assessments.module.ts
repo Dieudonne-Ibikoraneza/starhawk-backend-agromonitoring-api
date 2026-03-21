@@ -30,7 +30,12 @@ import { EmailModule } from '../email/email.module';
     RiskScoringService,
     DroneAnalysisService,
   ],
-  exports: [AssessmentsService, AssessmentsRepository, RiskScoringService],
+  exports: [
+    AssessmentsService,
+    AssessmentsRepository,
+    RiskScoringService,
+    DroneAnalysisService,
+  ],
 })
 export class AssessmentsModule {}
 

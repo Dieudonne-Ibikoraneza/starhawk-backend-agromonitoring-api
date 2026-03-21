@@ -22,7 +22,7 @@ export class DroneAnalysisService {
   ) {
     this.serviceUrl =
       this.configService.get<string>('DRONE_ANALYSIS_SERVICE_URL') ||
-      'http://localhost:8080';
+      'http://localhost:8000';
     this.timeout =
       this.configService.get<number>('DRONE_ANALYSIS_SERVICE_TIMEOUT') ||
       30000;
@@ -40,7 +40,7 @@ export class DroneAnalysisService {
   async extractDroneData(pdfPath: string): Promise<DroneAnalysisResponse> {
     try {
       this.logger.log(`Extracting drone data from PDF: ${pdfPath}`);
-      this.logger.log(`Calling Python service at: ${this.serviceUrl}/extract-drone-data`);
+      this.logger.log(`Calling Python service at: ${this.serviceUrl}/extract`);
 
       // Read file and encode as base64
       let pdfContent: string;
@@ -62,7 +62,7 @@ export class DroneAnalysisService {
 
       const response = await firstValueFrom(
         this.httpService.post<DroneAnalysisResponse>(
-          `${this.serviceUrl}/extract-drone-data`,
+          `${this.serviceUrl}/extract`,
           requestBody,
           {
             timeout: this.timeout,

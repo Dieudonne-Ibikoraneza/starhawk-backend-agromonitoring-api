@@ -35,6 +35,19 @@ export class ClaimAssessment {
   @Prop({ type: String })
   reportText?: string;
 
+  @Prop({ type: [{
+    pdfType: { type: String, required: true },
+    pdfUrl: { type: String, required: true },
+    droneAnalysisData: { type: Object },
+    uploadedAt: { type: Date, default: Date.now }
+  }] })
+  droneAnalysisPdfs?: {
+    pdfType: string;
+    pdfUrl: string;
+    droneAnalysisData?: object;
+    uploadedAt: Date;
+  }[];
+
   @Prop({ type: Date })
   submittedAt?: Date;
 }

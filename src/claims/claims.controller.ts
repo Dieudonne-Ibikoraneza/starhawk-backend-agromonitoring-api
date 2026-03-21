@@ -6,13 +6,27 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Delete,
+  Query,
+  UsePipes,
+  ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
+  ApiQuery,
+  ApiBody,
+  ApiParam,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { ClaimsService } from './claims.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -22,6 +36,7 @@ import { Role } from '../users/enums/role.enum';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimAssessmentDto } from './dto/update-claim-assessment.dto';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
 
 @ApiTags('Claims')
 @ApiBearerAuth()
@@ -128,6 +143,84 @@ export class ClaimsController {
       return this.claimsService.getAllClaims();
     }
     return [];
+  }
+
+  @Post(':id/upload-drone-pdf')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ASSESSOR)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/drone-analysis',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload drone analysis PDF for a claim (Assessor only)' })
+  @ApiResponse({ status: 200 })
+  @ApiQuery({ name: 'pdfType', enum: PdfType, required: true, description: 'Type of PDF being uploaded' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  async uploadDronePdf(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('pdfType') pdfType: PdfType,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    return this.claimsService.uploadDroneAnalysis(
+      user.userId,
+      id,
+      file,
+      pdfType,
+    );
+  }
+
+  @Get(':id/pdfs')
+  @ApiOperation({ summary: 'Get all uploaded PDFs for a claim' })
+  @ApiResponse({ status: 200, type: [Object] })
+  async getUploadedPdfs(@Param('id', UuidValidationPipe) id: string) {
+    return this.claimsService.getUploadedPdfs(id);
+  }
+
+  @Delete(':id/pdfs/:pdfType')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ASSESSOR)
+  @ApiOperation({ summary: 'Delete a specific PDF from a claim (Assessor only)' })
+  @ApiResponse({ status: 200 })
+  @ApiParam({ name: 'pdfType', enum: PdfType })
+  async deletePdf(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Param('pdfType') pdfType: PdfType,
+  ) {
+    return this.claimsService.deletePdf(
+      user.userId,
+      id,
+      pdfType,
+    );
   }
 }
 

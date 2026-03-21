@@ -34,9 +34,6 @@ export class CropMonitoring {
   @Prop({ type: [String] })
   observations?: string[];
 
-  @Prop({ type: [String] })
-  photoUrls?: string[];
-
   @Prop({ type: String })
   notes?: string;
 
@@ -45,6 +42,19 @@ export class CropMonitoring {
 
   @Prop({ type: Date })
   reportGeneratedAt?: Date;
+
+  @Prop({ type: [{
+    pdfType: { type: String, required: true },
+    pdfUrl: { type: String, required: true },
+    droneAnalysisData: { type: Object },
+    uploadedAt: { type: Date, default: Date.now }
+  }] })
+  droneAnalysisPdfs?: {
+    pdfType: string;
+    pdfUrl: string;
+    droneAnalysisData?: object;
+    uploadedAt: Date;
+  }[];
 
   @Prop({ enum: CropMonitoringStatus, default: CropMonitoringStatus.IN_PROGRESS })
   status: CropMonitoringStatus;

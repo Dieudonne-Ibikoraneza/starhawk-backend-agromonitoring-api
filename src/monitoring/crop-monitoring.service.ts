@@ -7,6 +7,8 @@ import { AgromonitoringService } from '../agromonitoring/agromonitoring.service'
 import { EmailService } from '../email/email.service';
 import { CropMonitoringStatus } from './schemas/crop-monitoring.schema';
 import { Types } from 'mongoose';
+import { DroneAnalysisService } from '../assessments/services/drone-analysis.service';
+import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
 
 @Injectable()
 export class CropMonitoringService {
@@ -19,6 +21,7 @@ export class CropMonitoringService {
     private usersRepository: UsersRepository,
     private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
+    private droneAnalysisService: DroneAnalysisService,
   ) {}
 
   /**
@@ -115,7 +118,6 @@ export class CropMonitoringService {
     monitoringId: string,
     updateData: {
       observations?: string[];
-      photoUrls?: string[];
       notes?: string;
       ndviData?: object;
     },
@@ -179,16 +181,25 @@ export class CropMonitoringService {
     const missingFields: string[] = [];
 
     if (!monitoring.notes || monitoring.notes.trim() === '') {
-      missingFields.push('Notes');
+      missingFields.push('Notes (Assessor notes are required)');
     }
 
-    if (!monitoring.observations || monitoring.observations.length === 0) {
-      missingFields.push('Observations');
+    // Validate that at least one drone report is uploaded and processed
+    const uploadedPdfs = monitoring.droneAnalysisPdfs || [];
+    if (uploadedPdfs.length === 0) {
+      missingFields.push('Drone Analysis Report (At least one report is required)');
+    } else {
+      // Check if anyway uploaded PDFs have extraction failures
+      const pdfsWithoutData = uploadedPdfs.filter((pdf: any) => !pdf.droneAnalysisData);
+      if (pdfsWithoutData.length > 0) {
+        const pdfTypes = pdfsWithoutData.map((pdf: any) => pdf.pdfType.replace('_', ' ')).join(', ');
+        missingFields.push(`Data extraction for ${pdfTypes} report(s)`);
+      }
     }
 
     if (missingFields.length > 0) {
       throw new BadRequestException(
-        `Cannot generate report. Missing required fields: ${missingFields.join(', ')}`,
+        `Cannot generate report. Missing required fields or processed data: ${missingFields.join(', ')}`,
       );
     }
 
@@ -230,7 +241,20 @@ export class CropMonitoringService {
 
     this.logger.log(`Monitoring report generated for monitoring ${monitoringId}`);
 
-    return updated;
+    return {
+      monitoringId,
+      policyId: monitoring.policyId,
+      monitoringNumber: monitoring.monitoringNumber,
+      monitoringDate: monitoring.monitoringDate,
+      weatherData: monitoring.weatherData,
+      ndviData: monitoring.ndviData,
+      observations: monitoring.observations,
+      notes: monitoring.notes,
+      droneAnalysisPdfs: monitoring.droneAnalysisPdfs || [],
+      reportGenerated: true,
+      reportGeneratedAt: new Date(),
+      status: CropMonitoringStatus.COMPLETED,
+    };
   }
 
   /**
@@ -245,5 +269,169 @@ export class CropMonitoringService {
    */
   async getPolicyMonitoringRecords(policyId: string): Promise<any[]> {
     return this.cropMonitoringRepository.findByPolicyId(policyId);
+  }
+
+  /**
+   * Upload drone analysis PDF for crop monitoring
+   */
+  async uploadDroneAnalysis(
+    assessorId: string,
+    monitoringId: string,
+    pdfFile: Express.Multer.File,
+    pdfType: PdfType,
+  ): Promise<any> {
+    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
+    if (!monitoring) {
+      throw new NotFoundException('CropMonitoring', monitoringId);
+    }
+
+    const monitoringAssessorId =
+      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
+        ? (monitoring.assessorId as any)._id.toString()
+        : monitoring.assessorId.toString();
+
+    if (monitoringAssessorId !== assessorId) {
+      throw new BadRequestException('Crop monitoring does not belong to this assessor');
+    }
+
+    if (pdfFile.mimetype !== 'application/pdf') {
+      throw new BadRequestException('Only PDF files are allowed');
+    }
+
+    const existingPdfs = monitoring.droneAnalysisPdfs || [];
+    const existingPdf = existingPdfs.find((pdf: any) => pdf.pdfType === pdfType);
+    if (existingPdf) {
+      throw new BadRequestException(
+        `A ${pdfType.replace('_', ' ')} PDF has already been uploaded for this monitoring cycle`,
+      );
+    }
+
+    if (!pdfFile.path && !pdfFile.buffer) {
+      throw new BadRequestException('File data is missing - no path or buffer available');
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const uploadDir = './uploads/drone-analysis';
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 9);
+    const filename = `${pdfType}-monitoring-${monitoringId}-${timestamp}-${randomStr}.pdf`;
+    const filePath = path.join(uploadDir, filename);
+
+    if (pdfFile.path) {
+      if (fs.existsSync(pdfFile.path)) {
+        fs.renameSync(pdfFile.path, filePath);
+      } else {
+        throw new BadRequestException('Uploaded file not found on disk');
+      }
+    } else if (pdfFile.buffer) {
+      fs.writeFileSync(filePath, pdfFile.buffer);
+    } else {
+      throw new BadRequestException('Unable to process file - no path or buffer available');
+    }
+
+    const pdfUrl = `/uploads/drone-analysis/${filename}`;
+    const absoluteFilePath = path.resolve(filePath);
+
+    let droneAnalysisData = null;
+    try {
+      this.logger.log(`Calling drone analysis service for: ${absoluteFilePath}`);
+      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
+      
+      if (analysisResult.success && analysisResult.extractedData) {
+        droneAnalysisData = analysisResult.extractedData;
+        this.logger.log('Successfully extracted drone data');
+      } else {
+        this.logger.warn(`Drone data extraction failed: ${analysisResult.error}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to extract drone data: ${error.message}`);
+    }
+
+    const newPdfEntry = {
+      pdfType,
+      pdfUrl,
+      droneAnalysisData,
+      uploadedAt: new Date(),
+    };
+
+    const updatedPdfs = [...existingPdfs, newPdfEntry];
+    const updatedMonitoring = await this.cropMonitoringRepository.update(monitoringId, {
+      droneAnalysisPdfs: updatedPdfs,
+    });
+
+    return {
+      monitoringId,
+      pdfType,
+      pdfUrl,
+      droneAnalysisData,
+      monitoring: updatedMonitoring,
+    };
+  }
+
+  /**
+   * Get all uploaded PDFs for a monitoring cycle
+   */
+  async getUploadedPdfs(monitoringId: string): Promise<any> {
+    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
+    if (!monitoring) {
+      throw new NotFoundException('CropMonitoring', monitoringId);
+    }
+    return monitoring.droneAnalysisPdfs || [];
+  }
+
+  /**
+   * Delete a specific PDF from a monitoring cycle
+   */
+  async deletePdf(assessorId: string, monitoringId: string, pdfType: PdfType): Promise<any> {
+    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
+    if (!monitoring) {
+      throw new NotFoundException('CropMonitoring', monitoringId);
+    }
+
+    const monitoringAssessorId =
+      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
+        ? (monitoring.assessorId as any)._id.toString()
+        : monitoring.assessorId.toString();
+
+    if (monitoringAssessorId !== assessorId) {
+      throw new BadRequestException('Crop monitoring does not belong to this assessor');
+    }
+
+    const existingPdfs = monitoring.droneAnalysisPdfs || [];
+    const pdfIndex = existingPdfs.findIndex((pdf: any) => pdf.pdfType === pdfType);
+
+    if (pdfIndex === -1) {
+      throw new BadRequestException(
+        `No ${pdfType.replace('_', ' ')} PDF found for this monitoring cycle`,
+      );
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const pdfToDelete = existingPdfs[pdfIndex];
+    const filePath = path.join('.', pdfToDelete.pdfUrl);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const updatedPdfs = existingPdfs.filter((pdf: any) => pdf.pdfType !== pdfType);
+
+    const updatedMonitoring = await this.cropMonitoringRepository.update(monitoringId, {
+      droneAnalysisPdfs: updatedPdfs,
+    });
+
+    return {
+      monitoringId,
+      pdfType,
+      message: `${pdfType.replace('_', ' ')} PDF deleted successfully`,
+      monitoring: updatedMonitoring,
+    };
   }
 }

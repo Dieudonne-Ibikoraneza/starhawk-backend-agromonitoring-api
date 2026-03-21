@@ -15,6 +15,8 @@ import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimAssessmentDto } from './dto/update-claim-assessment.dto';
 import { ClaimStatus } from './enums/claim-status.enum';
 import { PayoutStatus } from './schemas/payout.schema';
+import { DroneAnalysisService } from '../assessments/services/drone-analysis.service';
+import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
 
 @Injectable()
 export class ClaimsService {
@@ -26,6 +28,7 @@ export class ClaimsService {
     private usersRepository: UsersRepository,
     private emailService: EmailService,
     private damageAnalysisService: DamageAnalysisService,
+    private droneAnalysisService: DroneAnalysisService,
   ) {}
 
   async fileClaim(farmerId: string, createDto: CreateClaimDto) {
@@ -347,6 +350,186 @@ export class ClaimsService {
 
   async getAllClaims() {
     return this.claimsRepository.findAll();
+  }
+
+  /**
+   * Upload drone analysis PDF for a claim assessment
+   */
+  async uploadDroneAnalysis(
+    assessorId: string,
+    claimId: string,
+    pdfFile: Express.Multer.File,
+    pdfType: PdfType,
+  ): Promise<any> {
+    const claim = await this.claimsRepository.findById(claimId);
+    if (!claim) {
+      throw new NotFoundException('Claim', claimId);
+    }
+    if (!claim.assessmentReportId) {
+      throw new BadRequestException('No assessment report found for this claim');
+    }
+
+    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    const assessmentAssessorId = 
+      typeof assessment.assessorId === 'object' && (assessment.assessorId as any)._id
+        ? (assessment.assessorId as any)._id.toString()
+        : assessment.assessorId.toString();
+
+    if (assessmentAssessorId !== assessorId) {
+      throw new BadRequestException('This assessment is not assigned to you');
+    }
+
+    if (pdfFile.mimetype !== 'application/pdf') {
+      throw new BadRequestException('Only PDF files are allowed');
+    }
+
+    const existingPdfs = assessment.droneAnalysisPdfs || [];
+    const existingPdf = existingPdfs.find((pdf: any) => pdf.pdfType === pdfType);
+    if (existingPdf) {
+      throw new BadRequestException(`A ${pdfType.replace('_', ' ')} PDF has already been uploaded for this claim`);
+    }
+
+    if (!pdfFile.path && !pdfFile.buffer) {
+      throw new BadRequestException('File data is missing - no path or buffer available');
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const uploadDir = './uploads/drone-analysis';
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 9);
+    const filename = `${pdfType}-claim-${claimId}-${timestamp}-${randomStr}.pdf`;
+    const filePath = path.join(uploadDir, filename);
+
+    if (pdfFile.path) {
+      if (fs.existsSync(pdfFile.path)) {
+        fs.renameSync(pdfFile.path, filePath);
+      } else {
+        throw new BadRequestException('Uploaded file not found on disk');
+      }
+    } else if (pdfFile.buffer) {
+      fs.writeFileSync(filePath, pdfFile.buffer);
+    } else {
+      throw new BadRequestException('Unable to process file - no path or buffer available');
+    }
+
+    const pdfUrl = `/uploads/drone-analysis/${filename}`;
+    const absoluteFilePath = path.resolve(filePath);
+
+    let droneAnalysisData = null;
+    try {
+      console.log(`Calling drone analysis service for: ${absoluteFilePath}`);
+      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
+      
+      if (analysisResult.success && analysisResult.extractedData) {
+        droneAnalysisData = analysisResult.extractedData;
+      }
+    } catch (error: any) {
+      console.error(`Failed to extract drone data: ${error.message}`);
+    }
+
+    const newPdfEntry = {
+      pdfType,
+      pdfUrl,
+      droneAnalysisData,
+      uploadedAt: new Date(),
+    };
+
+    const updatedPdfs = [...existingPdfs, newPdfEntry];
+    const updatedAssessment = await this.claimAssessmentsRepository.update(claim.assessmentReportId.toString(), {
+      droneAnalysisPdfs: updatedPdfs,
+    });
+
+    return {
+      claimId,
+      pdfType,
+      pdfUrl,
+      droneAnalysisData,
+      assessment: updatedAssessment,
+    };
+  }
+
+  /**
+   * Get all uploaded PDFs for a claim
+   */
+  async getUploadedPdfs(claimId: string): Promise<any> {
+    const claim = await this.claimsRepository.findById(claimId);
+    if (!claim) {
+      throw new NotFoundException('Claim', claimId);
+    }
+    if (!claim.assessmentReportId) {
+      return [];
+    }
+    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    if (!assessment) {
+      return [];
+    }
+    return assessment.droneAnalysisPdfs || [];
+  }
+
+  /**
+   * Delete a specific PDF from a claim
+   */
+  async deletePdf(assessorId: string, claimId: string, pdfType: PdfType): Promise<any> {
+    const claim = await this.claimsRepository.findById(claimId);
+    if (!claim) {
+      throw new NotFoundException('Claim', claimId);
+    }
+    if (!claim.assessmentReportId) {
+      throw new BadRequestException('No assessment report found for this claim');
+    }
+
+    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    const assessmentAssessorId = 
+      typeof assessment.assessorId === 'object' && (assessment.assessorId as any)._id
+        ? (assessment.assessorId as any)._id.toString()
+        : assessment.assessorId.toString();
+
+    if (assessmentAssessorId !== assessorId) {
+      throw new BadRequestException('This assessment is not assigned to you');
+    }
+
+    const existingPdfs = assessment.droneAnalysisPdfs || [];
+    const pdfIndex = existingPdfs.findIndex((pdf: any) => pdf.pdfType === pdfType);
+
+    if (pdfIndex === -1) {
+      throw new BadRequestException(`No ${pdfType.replace('_', ' ')} PDF found for this claim`);
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const pdfToDelete = existingPdfs[pdfIndex];
+    const filePath = path.join('.', pdfToDelete.pdfUrl);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const updatedPdfs = existingPdfs.filter((pdf: any) => pdf.pdfType !== pdfType);
+
+    const updatedAssessment = await this.claimAssessmentsRepository.update(claim.assessmentReportId.toString(), {
+      droneAnalysisPdfs: updatedPdfs,
+    });
+
+    return {
+      claimId,
+      pdfType,
+      message: `${pdfType.replace('_', ' ')} PDF deleted successfully`,
+      assessment: updatedAssessment,
+    };
   }
 }
 

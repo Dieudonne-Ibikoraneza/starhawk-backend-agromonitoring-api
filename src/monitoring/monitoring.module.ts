@@ -21,6 +21,7 @@ import { UsersModule } from '../users/users.module';
 import { CropMonitoringRepository } from './crop-monitoring.repository';
 import { CropMonitoringService } from './crop-monitoring.service';
 import { CropMonitoringController } from './crop-monitoring.controller';
+import { AssessmentsModule } from '../assessments/assessments.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CropMonitoringController } from './crop-monitoring.controller';
     AgromonitoringModule,
     EmailModule,
     UsersModule,
+    AssessmentsModule,
   ],
   controllers: [MonitoringController, CropMonitoringController],
   providers: [
