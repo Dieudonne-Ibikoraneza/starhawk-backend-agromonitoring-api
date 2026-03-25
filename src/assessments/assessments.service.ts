@@ -40,16 +40,16 @@ export class AssessmentsService {
   /**
    * Helper method to extract ID from assessorId whether it's populated or not
    */
-  private extractAssessorId(assessorId: any): string {
-    if (!assessorId) return '';
-    if (assessorId instanceof Types.ObjectId) {
-      return assessorId.toString();
-    } else if (assessorId._id) {
-      return assessorId._id.toString();
-    } else if (typeof assessorId === 'string') {
-      return assessorId;
+  private extractId(id: any): string {
+    if (!id) return '';
+    if (id instanceof Types.ObjectId) {
+      return id.toString();
+    } else if (id && id._id) {
+      return id._id.toString();
+    } else if (typeof id === 'string') {
+      return id;
     }
-    return String(assessorId);
+    return String(id);
   }
 
   async createAssessment(insurerId: string | null, createDto: CreateAssessmentDto) {
@@ -87,7 +87,7 @@ export class AssessmentsService {
       throw new NotFoundException('Assessment', assessmentId);
     }
 
-    if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
+    if (this.extractId(assessment.assessorId) !== assessorId) {
       throw new BadRequestException('This assessment is not assigned to you');
     }
 
@@ -516,7 +516,7 @@ export class AssessmentsService {
       throw new NotFoundException('Assessment', assessmentId);
     }
 
-    if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
+    if (this.extractId(assessment.assessorId) !== assessorId) {
       throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
@@ -655,7 +655,7 @@ export class AssessmentsService {
       throw new NotFoundException('Assessment', assessmentId);
     }
 
-    if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
+    if (this.extractId(assessment.assessorId) !== assessorId) {
       throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
@@ -738,7 +738,7 @@ export class AssessmentsService {
       throw new NotFoundException('Assessment', assessmentId);
     }
 
-    if (this.extractAssessorId(assessment.assessorId) !== assessorId) {
+    if (this.extractId(assessment.assessorId) !== assessorId) {
       throw new BadRequestException('Assessment does not belong to this assessor');
     }
 
@@ -874,7 +874,7 @@ export class AssessmentsService {
     }
 
     // Validate assessment belongs to insurer
-    if (!assessment.insurerId || assessment.insurerId.toString() !== insurerId) {
+    if (!assessment.insurerId || this.extractId(assessment.insurerId) !== insurerId) {
       throw new BadRequestException('Assessment does not belong to this insurer');
     }
 
@@ -899,10 +899,10 @@ export class AssessmentsService {
 
     // Notify farmer and assessor
     try {
-      const farm = await this.farmsRepository.findById(assessment.farmId.toString());
-      const farmer = farm ? await this.usersRepository.findById(farm.farmerId.toString()) : null;
+      const farm = await this.farmsRepository.findById(this.extractId(assessment.farmId));
+      const farmer = farm ? await this.usersRepository.findById(this.extractId(farm.farmerId)) : null;
       const assessor = await this.usersRepository.findById(
-        this.extractAssessorId(assessment.assessorId),
+        this.extractId(assessment.assessorId),
       );
 
       if (farmer) {
@@ -951,7 +951,7 @@ export class AssessmentsService {
     }
 
     // Validate assessment belongs to insurer
-    if (!assessment.insurerId || assessment.insurerId.toString() !== insurerId) {
+    if (!assessment.insurerId || this.extractId(assessment.insurerId) !== insurerId) {
       throw new BadRequestException('Assessment does not belong to this insurer');
     }
 
@@ -977,10 +977,10 @@ export class AssessmentsService {
 
     // Notify farmer and assessor
     try {
-      const farm = await this.farmsRepository.findById(assessment.farmId.toString());
-      const farmer = farm ? await this.usersRepository.findById(farm.farmerId.toString()) : null;
+      const farm = await this.farmsRepository.findById(this.extractId(assessment.farmId));
+      const farmer = farm ? await this.usersRepository.findById(this.extractId(farm.farmerId)) : null;
       const assessor = await this.usersRepository.findById(
-        this.extractAssessorId(assessment.assessorId),
+        this.extractId(assessment.assessorId),
       );
 
       if (farmer) {

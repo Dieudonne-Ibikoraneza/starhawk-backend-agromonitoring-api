@@ -38,7 +38,7 @@ export class ClaimsService {
       throw new NotFoundException('Policy', createDto.policyId);
     }
 
-    if (policy.farmerId.toString() !== farmerId) {
+    if (this.extractId(policy.farmerId) !== farmerId) {
       throw new BadRequestException('Policy does not belong to this farmer');
     }
 
@@ -98,9 +98,9 @@ export class ClaimsService {
 
     // Verify claim belongs to insurer's policy
     const policy = await this.policiesRepository.findById(
-      claim.policyId.toString(),
+      this.extractId(claim.policyId),
     );
-    if (policy?.insurerId.toString() !== insurerId) {
+    if (this.extractId(policy?.insurerId) !== insurerId) {
       throw new BadRequestException(
         'Claim does not belong to your insurer',
       );
@@ -135,13 +135,13 @@ export class ClaimsService {
     }
 
     const assessment = await this.claimAssessmentsRepository.findById(
-      claim.assessmentReportId.toString(),
+      this.extractId(claim.assessmentReportId),
     );
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
     }
 
-    if (assessment.assessorId.toString() !== assessorId) {
+    if (this.extractId(assessment.assessorId) !== assessorId) {
       throw new BadRequestException(
         'This assessment is not assigned to you',
       );
@@ -151,7 +151,7 @@ export class ClaimsService {
     if (!updateDto.ndviBefore || !updateDto.ndviAfter) {
       try {
         const damageAnalysis = await this.damageAnalysisService.analyzeDamage(
-          claim.farmId.toString(),
+          this.extractId(claim.farmId),
           claim.filedAt,
         );
 
@@ -168,7 +168,7 @@ export class ClaimsService {
     const assessmentDoc = assessment as any;
     // Update assessment
     await this.claimAssessmentsRepository.update(
-      assessmentDoc._id.toString(),
+      this.extractId(assessmentDoc._id),
       updateDto,
     );
 
@@ -177,7 +177,7 @@ export class ClaimsService {
       status: ClaimStatus.IN_PROGRESS,
     });
 
-    return this.claimAssessmentsRepository.findById(assessmentDoc._id.toString());
+    return this.claimAssessmentsRepository.findById(this.extractId(assessmentDoc._id));
   }
 
   async submitClaimAssessment(assessorId: string, claimId: string) {
@@ -187,14 +187,14 @@ export class ClaimsService {
     }
 
     const assessment = await this.claimAssessmentsRepository.findById(
-      claim.assessmentReportId.toString(),
+      this.extractId(claim.assessmentReportId),
     );
-    if (assessment?.assessorId.toString() !== assessorId) {
+    if (this.extractId(assessment?.assessorId) !== assessorId) {
       throw new BadRequestException('Assessment not assigned to you');
     }
 
     const assessmentDoc = assessment as any;
-    await this.claimAssessmentsRepository.update(assessmentDoc._id.toString(), {
+    await this.claimAssessmentsRepository.update(this.extractId(assessmentDoc._id), {
       submittedAt: new Date(),
     });
 
@@ -208,9 +208,9 @@ export class ClaimsService {
     }
 
     const policy = await this.policiesRepository.findById(
-      claim.policyId.toString(),
+      this.extractId(claim.policyId),
     );
-    if (policy?.insurerId.toString() !== insurerId) {
+    if (this.extractId(policy?.insurerId) !== insurerId) {
       throw new BadRequestException('Claim does not belong to your insurer');
     }
 
@@ -233,7 +233,7 @@ export class ClaimsService {
     // Send email notification to farmer
     try {
       const farmer = await this.usersRepository.findById(
-        claim.farmerId.toString(),
+        this.extractId(claim.farmerId),
       );
       if (farmer) {
         await this.emailService
@@ -270,9 +270,9 @@ export class ClaimsService {
     }
 
     const policy = await this.policiesRepository.findById(
-      claim.policyId.toString(),
+      this.extractId(claim.policyId),
     );
-    if (policy?.insurerId.toString() !== insurerId) {
+    if (this.extractId(policy?.insurerId) !== insurerId) {
       throw new BadRequestException('Claim does not belong to your insurer');
     }
 
@@ -294,7 +294,7 @@ export class ClaimsService {
     // Send email notification to farmer
     try {
       const farmer = await this.usersRepository.findById(
-        claim.farmerId.toString(),
+        this.extractId(claim.farmerId),
       );
       if (farmer) {
         await this.emailService
@@ -344,8 +344,14 @@ export class ClaimsService {
     // Get all claims for these policies
     const allClaims = await this.claimsRepository.findAll();
     return allClaims.filter(
-      (claim) => policyIds.some((id: string) => claim.policyId?.toString() === id.toString())
+      (claim) => policyIds.some((id: any) => this.extractId(claim.policyId) === this.extractId(id))
     );
+  }
+
+  private extractId(id: any): string {
+    if (!id) return '';
+    if (typeof id === 'string') return id;
+    return id._id ? id._id.toString() : id.toString();
   }
 
   async getAllClaims() {
@@ -369,7 +375,7 @@ export class ClaimsService {
       throw new BadRequestException('No assessment report found for this claim');
     }
 
-    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    const assessment = await this.claimAssessmentsRepository.findById(this.extractId(claim.assessmentReportId));
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
     }
@@ -445,7 +451,7 @@ export class ClaimsService {
     };
 
     const updatedPdfs = [...existingPdfs, newPdfEntry];
-    const updatedAssessment = await this.claimAssessmentsRepository.update(claim.assessmentReportId.toString(), {
+    const updatedAssessment = await this.claimAssessmentsRepository.update(this.extractId(claim.assessmentReportId), {
       droneAnalysisPdfs: updatedPdfs,
     });
 
@@ -469,7 +475,7 @@ export class ClaimsService {
     if (!claim.assessmentReportId) {
       return [];
     }
-    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    const assessment = await this.claimAssessmentsRepository.findById(this.extractId(claim.assessmentReportId));
     if (!assessment) {
       return [];
     }
@@ -488,7 +494,7 @@ export class ClaimsService {
       throw new BadRequestException('No assessment report found for this claim');
     }
 
-    const assessment = await this.claimAssessmentsRepository.findById(claim.assessmentReportId.toString());
+    const assessment = await this.claimAssessmentsRepository.findById(this.extractId(claim.assessmentReportId));
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
     }
@@ -520,7 +526,7 @@ export class ClaimsService {
 
     const updatedPdfs = existingPdfs.filter((pdf: any) => pdf.pdfType !== pdfType);
 
-    const updatedAssessment = await this.claimAssessmentsRepository.update(claim.assessmentReportId.toString(), {
+    const updatedAssessment = await this.claimAssessmentsRepository.update(this.extractId(claim.assessmentReportId), {
       droneAnalysisPdfs: updatedPdfs,
     });
 

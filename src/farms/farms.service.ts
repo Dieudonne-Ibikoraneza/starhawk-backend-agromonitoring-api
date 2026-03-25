@@ -600,7 +600,7 @@ export class FarmsService {
     const existingRequests = await this.insuranceRequestsRepository.findByStatus(
       InsuranceRequestStatus.PENDING,
     );
-    const hasExistingRequest = existingRequests.some(req => req.farmId.toString() === farmId);
+    const hasExistingRequest = existingRequests.some(req => this.extractId(req.farmId) === farmId);
 
     if (hasExistingRequest) {
       throw new BadRequestException('An insurance request already exists for this farm');
@@ -1003,5 +1003,12 @@ export class FarmsService {
     this.logger.log(` Farm ${farmId} registered with AGROmonitoring - Field ID: ${eosdaFieldId}`);
 
     return this.mapToFarmResponse(updatedFarm);
+  }
+
+  private extractId(id: any): string {
+    if (!id) return '';
+    if (typeof id === 'string') return id;
+    if (id instanceof Types.ObjectId) return id.toString();
+    return id._id ? id._id.toString() : id.toString();
   }
 }

@@ -66,15 +66,12 @@ export class CropMonitoringService {
     const monitoringNumber = existingCount + 1;
 
     // Resolve farm ID (handle populated vs. unpopulated references)
-    const resolvedFarmId =
-      (policy as any).farmId && typeof (policy as any).farmId === 'object'
-        ? ((policy as any).farmId._id ?? (policy as any).farmId).toString()
-        : policy.farmId.toString();
+    const resolvedFarmId = this.extractId(policy.farmId);
 
     // Get farm for AGROmonitoring data
     const farm = await this.farmsRepository.findById(resolvedFarmId);
     if (!farm) {
-      throw new NotFoundException('Farm', policy.farmId.toString());
+      throw new NotFoundException('Farm', this.extractId(policy.farmId));
     }
 
     // Fetch weather data from AGROmonitoring (if coordinates available)
@@ -128,13 +125,7 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    // Handle populated assessorId (could be full User object or ObjectId)
-    const monitoringAssessorId =
-      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
-        ? (monitoring.assessorId as any)._id.toString()
-        : monitoring.assessorId.toString();
-
-    if (monitoringAssessorId !== assessorId) {
+    if (this.extractId(monitoring.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -162,13 +153,7 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    // Handle populated assessorId (could be full User object or ObjectId)
-    const monitoringAssessorId =
-      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
-        ? (monitoring.assessorId as any)._id.toString()
-        : monitoring.assessorId.toString();
-
-    if (monitoringAssessorId !== assessorId) {
+    if (this.extractId(monitoring.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -217,11 +202,11 @@ export class CropMonitoringService {
 
     // Notify insurer
     try {
-      const policy = await this.policiesRepository.findById(monitoring.policyId.toString());
+      const policy = await this.policiesRepository.findById(this.extractId(monitoring.policyId));
       if (policy) {
-        const insurer = await this.usersRepository.findById(policy.insurerId.toString());
+        const insurer = await this.usersRepository.findById(this.extractId(policy.insurerId));
         if (insurer) {
-          const farm = await this.farmsRepository.findById(monitoring.farmId.toString());
+          const farm = await this.farmsRepository.findById(this.extractId(monitoring.farmId));
           await this.emailService
             .sendMonitoringReportEmail(
               insurer.email,
@@ -285,12 +270,7 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    const monitoringAssessorId =
-      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
-        ? (monitoring.assessorId as any)._id.toString()
-        : monitoring.assessorId.toString();
-
-    if (monitoringAssessorId !== assessorId) {
+    if (this.extractId(monitoring.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -394,12 +374,7 @@ export class CropMonitoringService {
       throw new NotFoundException('CropMonitoring', monitoringId);
     }
 
-    const monitoringAssessorId =
-      typeof monitoring.assessorId === 'object' && (monitoring.assessorId as any)._id
-        ? (monitoring.assessorId as any)._id.toString()
-        : monitoring.assessorId.toString();
-
-    if (monitoringAssessorId !== assessorId) {
+    if (this.extractId(monitoring.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -433,5 +408,12 @@ export class CropMonitoringService {
       message: `${pdfType.replace('_', ' ')} PDF deleted successfully`,
       monitoring: updatedMonitoring,
     };
+  }
+
+  private extractId(id: any): string {
+    if (!id) return '';
+    if (typeof id === 'string') return id;
+    if (id instanceof Types.ObjectId) return id.toString();
+    return id._id ? id._id.toString() : id.toString();
   }
 }
