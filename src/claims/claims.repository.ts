@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Claim, ClaimDocument } from './schemas/claim.schema';
 
 @Injectable()
@@ -25,8 +25,15 @@ export class ClaimsRepository {
   }
 
   async findByFarmerId(farmerId: string): Promise<ClaimDocument[]> {
+    const farmerObjectId = new Types.ObjectId(farmerId);
     return this.claimModel
-      .find({ farmerId })
+      .find({
+        $or: [
+          { farmerId: farmerObjectId },
+          { 'farmerId._id': farmerObjectId },
+          { 'farmerId.id': farmerObjectId },
+        ],
+      })
       .populate('policyId')
       .populate('farmId')
       .exec();
@@ -37,8 +44,15 @@ export class ClaimsRepository {
   }
 
   async findByAssessorId(assessorId: string): Promise<ClaimDocument[]> {
+    const assessorObjectId = new Types.ObjectId(assessorId);
     return this.claimModel
-      .find({ assessorId })
+      .find({
+        $or: [
+          { assessorId: assessorObjectId },
+          { 'assessorId._id': assessorObjectId },
+          { 'assessorId.id': assessorObjectId },
+        ],
+      })
       .populate('policyId')
       .populate('farmId')
       .exec();

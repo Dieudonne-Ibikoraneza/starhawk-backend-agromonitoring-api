@@ -198,7 +198,12 @@ export class ClaimsService {
       submittedAt: new Date(),
     });
 
-    return assessment;
+    // Update claim status to SUBMITTED
+    await this.claimsRepository.update(claimId, {
+      status: ClaimStatus.SUBMITTED,
+    });
+
+    return this.claimAssessmentsRepository.findById(this.extractId(assessmentDoc._id));
   }
 
   async approveClaim(insurerId: string, claimId: string, payoutAmount: number) {
@@ -212,6 +217,13 @@ export class ClaimsService {
     );
     if (this.extractId(policy?.insurerId) !== insurerId) {
       throw new BadRequestException('Claim does not belong to your insurer');
+    }
+
+    // Validate claim status is SUBMITTED
+    if (claim.status !== ClaimStatus.SUBMITTED) {
+      throw new BadRequestException(
+        `Cannot approve claim. Current status: ${claim.status}. Only SUBMITTED claims can be approved.`,
+      );
     }
 
     // Update claim
@@ -274,6 +286,13 @@ export class ClaimsService {
     );
     if (this.extractId(policy?.insurerId) !== insurerId) {
       throw new BadRequestException('Claim does not belong to your insurer');
+    }
+
+    // Validate claim status is SUBMITTED
+    if (claim.status !== ClaimStatus.SUBMITTED) {
+      throw new BadRequestException(
+        `Cannot reject claim. Current status: ${claim.status}. Only SUBMITTED claims can be rejected.`,
+      );
     }
 
     await this.claimsRepository.update(claimId, {
