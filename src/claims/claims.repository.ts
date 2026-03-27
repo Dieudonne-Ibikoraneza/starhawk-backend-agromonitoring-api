@@ -21,6 +21,7 @@ export class ClaimsRepository {
       .populate('farmerId')
       .populate('farmId')
       .populate('assessorId')
+      .populate('assessmentReportId')
       .exec();
   }
 
@@ -74,6 +75,7 @@ export class ClaimsRepository {
   ): Promise<ClaimDocument | null> {
     return this.claimModel
       .findByIdAndUpdate(id, updateData, { new: true })
+      .populate('assessmentReportId')
       .exec();
   }
 }

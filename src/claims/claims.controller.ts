@@ -23,7 +23,9 @@ import {
   ApiQuery,
   ApiBody,
   ApiParam,
+  ApiProperty,
 } from '@nestjs/swagger';
+import { ClaimAssessment } from './schemas/claim-assessment.schema';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -71,7 +73,7 @@ export class ClaimsController {
   @UseGuards(RolesGuard)
   @Roles(Role.ASSESSOR)
   @ApiOperation({ summary: 'Update claim assessment (Assessor only)' })
-  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 200, type: ClaimAssessment, description: 'Assessment updated successfully. Includes automated NDVI fallback if not provided.' })
   async updateAssessment(
     @CurrentUser() user: any,
     @Param('id', UuidValidationPipe) id: string,
@@ -203,6 +205,18 @@ export class ClaimsController {
   @ApiResponse({ status: 200, type: [Object] })
   async getUploadedPdfs(@Param('id', UuidValidationPipe) id: string) {
     return this.claimsService.getUploadedPdfs(id);
+  }
+
+  @Get(':id/analysis')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ASSESSOR)
+  @ApiOperation({ summary: 'Get automated damage analysis for a claim (Assessor only)' })
+  @ApiResponse({ status: 200 })
+  async getDamageAnalysis(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.claimsService.getDamageAnalysis(id);
   }
 
   @Delete(':id/pdfs/:pdfType')

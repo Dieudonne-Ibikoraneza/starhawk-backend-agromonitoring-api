@@ -749,17 +749,10 @@ export class AssessmentsService {
       missingFields.push('Comprehensive assessment notes');
     }
 
-    // Validate that both PDF types are uploaded
+    // Validate that at least one PDF is uploaded
     const uploadedPdfs = assessment.droneAnalysisPdfs || [];
-    const hasPlantHealth = uploadedPdfs.some(pdf => pdf.pdfType === 'plant_health');
-    const hasFlowering = uploadedPdfs.some(pdf => pdf.pdfType === 'flowering');
-
-    if (!hasPlantHealth) {
-      missingFields.push('Plant health PDF');
-    }
-
-    if (!hasFlowering) {
-      missingFields.push('Flowering PDF');
+    if (uploadedPdfs.length === 0) {
+      missingFields.push('At least one drone analysis PDF');
     }
 
     // Check if any uploaded PDFs have extraction failures

@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { ApiProperty } from '@nestjs/swagger';
 import { Document, Types } from 'mongoose';
 
 export type ClaimAssessmentDocument = ClaimAssessment & Document;
@@ -23,15 +24,19 @@ export class ClaimAssessment {
   @Prop({ type: Number })
   damageArea?: number; // in hectares
 
+  @ApiProperty({ type: Number, required: false })
   @Prop({ type: Number })
   ndviBefore?: number;
 
+  @ApiProperty({ type: Number, required: false })
   @Prop({ type: Number })
   ndviAfter?: number;
 
+  @ApiProperty({ type: String, required: false })
   @Prop({ type: String })
   weatherImpactAnalysis?: string;
 
+  @ApiProperty({ type: String, required: false })
   @Prop({ type: String })
   reportText?: string;
 
