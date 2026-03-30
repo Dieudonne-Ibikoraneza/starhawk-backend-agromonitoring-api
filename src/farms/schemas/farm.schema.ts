@@ -34,6 +34,10 @@ export class Farm {
     coordinates: [number, number]; // [longitude, latitude] for centroid
   };
 
+  /** Human-readable place name from reverse geocoding (Nominatim), persisted to avoid repeat API calls */
+  @Prop()
+  locationName?: string;
+
   @Prop({
     type: {
       type: String,

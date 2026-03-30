@@ -8,6 +8,7 @@ import { FarmsRepository } from './farms.repository';
 import { InsuranceRequestsRepository } from './insurance-requests.repository';
 import { ShapefileParserService } from './services/shapefile-parser.service';
 import { LocationService } from './services/location.service';
+import { FarmLocationSyncService } from './services/farm-location-sync.service';
 import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { AssessmentsModule } from '../assessments/assessments.module';
 import { EmailModule } from '../email/email.module';
@@ -42,8 +43,9 @@ import {
     InsuranceRequestsRepository,
     ShapefileParserService,
     LocationService,
+    FarmLocationSyncService,
   ],
-  exports: [FarmsService, FarmsRepository, LocationService],
+  exports: [FarmsService, FarmsRepository, LocationService, FarmLocationSyncService],
 })
 export class FarmsModule {}
 

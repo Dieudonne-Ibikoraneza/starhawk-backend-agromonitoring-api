@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Alert, AlertDocument } from './schemas/alert.schema';
 
 @Injectable()
@@ -31,6 +31,14 @@ export class AlertsRepository {
   async findUnread(farmId?: string): Promise<AlertDocument[]> {
     const query = farmId ? { farmId, readAt: null } : { readAt: null };
     return this.alertModel.find(query).sort({ sentAt: -1 }).exec();
+  }
+
+  async findUnreadByFarmIds(farmIds: Types.ObjectId[]): Promise<AlertDocument[]> {
+    if (farmIds.length === 0) return [];
+    return this.alertModel
+      .find({ farmId: { $in: farmIds }, readAt: null })
+      .sort({ sentAt: -1 })
+      .exec();
   }
 
   async markAsRead(alertId: string): Promise<AlertDocument | null> {

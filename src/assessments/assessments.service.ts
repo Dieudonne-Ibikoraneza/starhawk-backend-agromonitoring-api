@@ -8,7 +8,7 @@ import { AgromonitoringService } from '../agromonitoring/agromonitoring.service'
 import { EmailService } from '../email/email.service';
 import { RiskScoringService } from './services/risk-scoring.service';
 import { DroneAnalysisService } from './services/drone-analysis.service';
-import { LocationService } from '../farms/services/location.service';
+import { FarmLocationSyncService } from '../farms/services/farm-location-sync.service';
 import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { AssignAssessorDto } from './dto/assign-assessor.dto';
@@ -34,7 +34,7 @@ export class AssessmentsService {
     private emailService: EmailService,
     private riskScoringService: RiskScoringService,
     private droneAnalysisService: DroneAnalysisService,
-    private locationService: LocationService,
+    private farmLocationSync: FarmLocationSyncService,
   ) {}
 
   /**
@@ -297,21 +297,7 @@ export class AssessmentsService {
         // Map farms to response DTO
         const farmsResponse: FarmResponseDto[] = await Promise.all(
           filteredFarms.map(async (farm: any) => {
-            // Get location name from coordinates
-            let locationName: string | undefined;
-            if (
-              farm.location &&
-              farm.location.coordinates &&
-              farm.location.coordinates.length >= 2
-            ) {
-              const latitude = farm.location.coordinates[1];
-              const longitude = farm.location.coordinates[0];
-              try {
-                locationName = await this.locationService.getLocationString(latitude, longitude);
-              } catch (err) {
-                this.logger.warn(`Failed to get location name for farm ${farm._id}: ${err}`);
-              }
-            }
+            await this.farmLocationSync.ensurePersisted(farm);
 
             return {
               id: farm._id.toString(),
@@ -321,7 +307,7 @@ export class AssessmentsService {
               cropType: farm.cropType,
               sowingDate: farm.sowingDate,
               location: farm.location,
-              locationName: locationName,
+              locationName: farm.locationName,
               boundary: farm.boundary,
               status: farm.status,
               shapefilePath: farm.shapefilePath,

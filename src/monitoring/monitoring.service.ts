@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Types } from 'mongoose';
 import { MonitoringRepository } from './monitoring.repository';
@@ -8,7 +8,9 @@ import { FarmsRepository } from '../farms/farms.repository';
 import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
 import { UsersRepository } from '../users/users.repository';
-import { AlertType, AlertSeverity } from './schemas/alert.schema';
+import { AlertDocument, AlertType, AlertSeverity } from './schemas/alert.schema';
+import { Role } from '../users/enums/role.enum';
+import { MonitoringAlertResponseDto } from './dto/monitoring-alert-response.dto';
 
 @Injectable()
 export class MonitoringService {
@@ -208,11 +210,55 @@ export class MonitoringService {
     return this.monitoringRepository.findByFarmId(farmId);
   }
 
-  async getAlerts(farmId?: string) {
-    if (farmId) {
-      return this.alertsRepository.findByFarmId(farmId);
+  /**
+   * Unread alerts: farmers only see alerts for their own farms; other roles see all unread.
+   */
+  async getAlertsForUser(user: { role: string; userId: string }): Promise<MonitoringAlertResponseDto[]> {
+    let alerts: AlertDocument[];
+    if (user.role === Role.FARMER) {
+      const farms = await this.farmsRepository.findByFarmerId(user.userId);
+      const farmIds = farms.map(f => f._id as Types.ObjectId);
+      alerts = farmIds.length ? await this.alertsRepository.findUnreadByFarmIds(farmIds) : [];
+    } else {
+      alerts = await this.alertsRepository.findUnread();
     }
-    return this.alertsRepository.findUnread();
+    return this.mapAlertsToDto(alerts);
+  }
+
+  /**
+   * Unread alerts for one farm; farmers may only access their own farms.
+   */
+  async getAlertsForFarm(
+    farmId: string,
+    user: { role: string; userId: string },
+  ): Promise<MonitoringAlertResponseDto[]> {
+    if (user.role === Role.FARMER) {
+      const farm = await this.farmsRepository.findById(farmId);
+      if (!farm || farm.farmerId.toString() !== user.userId) {
+        throw new ForbiddenException('You can only view alerts for your own farms');
+      }
+    }
+    const alerts = await this.alertsRepository.findUnread(farmId);
+    return this.mapAlertsToDto(alerts);
+  }
+
+  private async mapAlertsToDto(alerts: AlertDocument[]): Promise<MonitoringAlertResponseDto[]> {
+    if (!alerts.length) return [];
+    const farmIds = [...new Set(alerts.map(a => a.farmId.toString()))];
+    const farms = await this.farmsRepository.findByIds(farmIds);
+    const nameById = new Map(
+      farms.map(f => [(f._id as Types.ObjectId).toString(), f.name?.trim() || 'Farm']),
+    );
+    return alerts.map(alert => ({
+      id: String(alert._id),
+      farmId: alert.farmId.toString(),
+      farmName: nameById.get(alert.farmId.toString()) || 'Farm',
+      type: alert.type,
+      severity: String(alert.severity).toLowerCase(),
+      message: alert.message,
+      createdAt: (alert.sentAt ?? (alert as { createdAt?: Date }).createdAt ?? new Date()).toISOString(),
+      read: !!alert.readAt,
+    }));
   }
 
   async markAlertAsRead(alertId: string) {

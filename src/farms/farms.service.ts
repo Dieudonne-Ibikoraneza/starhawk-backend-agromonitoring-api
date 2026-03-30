@@ -10,6 +10,7 @@ import { FarmsRepository } from './farms.repository';
 import { InsuranceRequestsRepository } from './insurance-requests.repository';
 import { ShapefileParserService } from './services/shapefile-parser.service';
 import { LocationService } from './services/location.service';
+import { FarmLocationSyncService } from './services/farm-location-sync.service';
 import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { AssessmentsService } from '../assessments/assessments.service';
 import { EmailService } from '../email/email.service';
@@ -30,6 +31,7 @@ export class FarmsService {
     private insuranceRequestsRepository: InsuranceRequestsRepository,
     private shapefileParser: ShapefileParserService,
     private locationService: LocationService,
+    private farmLocationSync: FarmLocationSyncService,
     private agromonitoringService: AgromonitoringService,
     private assessmentsService: AssessmentsService,
     private emailService: EmailService,
@@ -191,6 +193,10 @@ export class FarmsService {
       eosdaArea = undefined;
     }
 
+    const latitude = location.coordinates[1];
+    const longitude = location.coordinates[0];
+    const locationName = await this.locationService.getLocationString(latitude, longitude);
+
     // Update farm with geometry, name, and EOSDA field ID
     const updateData = {
       name,
@@ -199,6 +205,7 @@ export class FarmsService {
       area,
       eosdaFieldId,
       status: FarmStatus.REGISTERED,
+      locationName,
     };
 
     const updatedFarm = await this.farmsRepository.update(farmId, updateData);
@@ -261,6 +268,10 @@ export class FarmsService {
       );
     }
 
+    const latitude = location.coordinates[1];
+    const longitude = location.coordinates[0];
+    const locationName = await this.locationService.getLocationString(latitude, longitude);
+
     // Create farm in MongoDB only after EOSDA field is created
     const farmData = {
       farmerId: new Types.ObjectId(farmerId),
@@ -271,6 +282,7 @@ export class FarmsService {
       boundary: createFarmDto.boundary,
       status: FarmStatus.REGISTERED,
       eosdaFieldId, // Store EOSDA field ID for subsequent API calls
+      locationName,
     };
 
     const farm = await this.farmsRepository.create(farmData);
@@ -327,6 +339,10 @@ export class FarmsService {
       );
     }
 
+    const latitude = centroid[1];
+    const longitude = centroid[0];
+    const locationName = await this.locationService.getLocationString(latitude, longitude);
+
     // Create farm in MongoDB only after EOSDA field is created
     const farmData = {
       farmerId: new Types.ObjectId(farmerId),
@@ -340,6 +356,7 @@ export class FarmsService {
       boundary,
       status: FarmStatus.REGISTERED,
       eosdaFieldId, // Store EOSDA field ID for subsequent API calls
+      locationName,
     };
 
     const farm = await this.farmsRepository.create(farmData);
@@ -389,6 +406,10 @@ export class FarmsService {
       );
     }
 
+    const latitude = centroid[1];
+    const longitude = centroid[0];
+    const locationName = await this.locationService.getLocationString(latitude, longitude);
+
     // Create farm in MongoDB only after EOSDA field is created
     const farmData = {
       farmerId: new Types.ObjectId(farmerId),
@@ -402,6 +423,7 @@ export class FarmsService {
       boundary,
       status: FarmStatus.REGISTERED,
       eosdaFieldId, // Store EOSDA field ID for subsequent API calls
+      locationName,
     };
 
     const farm = await this.farmsRepository.create(farmData);
@@ -470,10 +492,16 @@ export class FarmsService {
     }
     const farms = await this.farmsRepository.findAll(page, limit, filters);
 
-    // Map each farm to include locationName
+    const items = await Promise.all(
+      farms.items.map(async farm => {
+        await this.farmLocationSync.ensurePersisted(farm);
+        return this.mapToFarmResponse(farm);
+      }),
+    );
+
     return {
       ...farms,
-      items: farms.items.map(farm => this.mapToFarmResponse(farm)),
+      items,
     };
   }
 
@@ -488,28 +516,18 @@ export class FarmsService {
       this.logger.debug(`Retrieved farm ${id} with EOSDA field ID: ${farm.eosdaFieldId}`);
     }
 
-    // Get location name from coordinates
-    let locationName: string | undefined;
-    if (farm.location && farm.location.coordinates && farm.location.coordinates.length >= 2) {
-      const longitude = farm.location.coordinates[0];
-      const latitude = farm.location.coordinates[1];
-      try {
-        locationName = await this.locationService.getLocationString(latitude, longitude);
-      } catch (err: any) {
-        this.logger.warn(`Failed to get location name: ${err.message}`);
-      }
-    }
-
-    // Build response with location name
-    const response = this.mapToFarmResponse(farm);
-    response.locationName = locationName;
-
-    return response;
+    await this.farmLocationSync.ensurePersisted(farm);
+    return this.mapToFarmResponse(farm);
   }
 
   async findByFarmerId(farmerId: string): Promise<FarmResponseDto[]> {
     const farms = await this.farmsRepository.findByFarmerId(farmerId);
-    return farms.map(farm => this.mapToFarmResponse(farm));
+    return Promise.all(
+      farms.map(async farm => {
+        await this.farmLocationSync.ensurePersisted(farm);
+        return this.mapToFarmResponse(farm);
+      }),
+    );
   }
 
   async update(id: string, updateData: Partial<CreateFarmDto>) {
@@ -527,6 +545,23 @@ export class FarmsService {
         coordinates: centroid,
       };
       (updateData as any).area = area;
+      const latitude = centroid[1];
+      const longitude = centroid[0];
+      (updateData as any).locationName = await this.locationService.getLocationString(
+        latitude,
+        longitude,
+      );
+    } else {
+      const loc = updateData.location;
+      const coords = loc?.coordinates;
+      if (coords && coords.length >= 2) {
+        const longitude = coords[0];
+        const latitude = coords[1];
+        (updateData as any).locationName = await this.locationService.getLocationString(
+          latitude,
+          longitude,
+        );
+      }
     }
 
     const updatedFarm = await this.farmsRepository.update(id, updateData);
@@ -693,26 +728,6 @@ export class FarmsService {
       farmerIdValue = farm.farmerId?.toString() || '';
     }
 
-    // Get location name from coordinates if available
-    let locationName: string | undefined;
-    if (farm.location && farm.location.coordinates && farm.location.coordinates.length >= 2) {
-      // Coordinates are [longitude, latitude]
-      const longitude = farm.location.coordinates[0];
-      const latitude = farm.location.coordinates[1];
-      // Get location name synchronously (will be cached internally)
-      // Note: This is a simplified approach - in production you might want to cache this
-      this.locationService
-        .getLocationString(latitude, longitude)
-        .then(name => {
-          if (name) {
-            locationName = name;
-          }
-        })
-        .catch(err => {
-          this.logger.warn(`Failed to get location name: ${err.message}`);
-        });
-    }
-
     const response = {
       id: farm._id.toString(),
       farmerId: farmerIdValue,
@@ -722,7 +737,7 @@ export class FarmsService {
       cropType: farm.cropType,
       sowingDate: farm.sowingDate,
       location: farm.location,
-      locationName: locationName,
+      locationName: farm.locationName,
       boundary: farm.boundary,
       status: farm.status,
       shapefilePath: farm.shapefilePath,

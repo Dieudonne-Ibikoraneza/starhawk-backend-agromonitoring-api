@@ -22,6 +22,12 @@ export class FarmsRepository {
     return this.farmModel.find({ farmerId: new Types.ObjectId(farmerId) }).exec();
   }
 
+  async findByIds(ids: string[]): Promise<FarmDocument[]> {
+    if (ids.length === 0) return [];
+    const objectIds = ids.map(id => new Types.ObjectId(id));
+    return this.farmModel.find({ _id: { $in: objectIds } }).exec();
+  }
+
   async findAll(
     page: number = 0,
     limit: number = 10,

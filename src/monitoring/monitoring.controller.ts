@@ -8,6 +8,8 @@ import {
 import { MonitoringService } from './monitoring.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { MonitoringAlertResponseDto } from './dto/monitoring-alert-response.dto';
 
 @ApiTags('Monitoring')
 @ApiBearerAuth()
@@ -24,17 +26,22 @@ export class MonitoringController {
   }
 
   @Get('alerts')
-  @ApiOperation({ summary: 'Get alerts' })
-  @ApiResponse({ status: 200 })
-  async getAlerts() {
-    return this.monitoringService.getAlerts();
+  @ApiOperation({
+    summary: 'Get unread alerts (farmers: only their farms; other roles: all unread)',
+  })
+  @ApiResponse({ status: 200, type: [MonitoringAlertResponseDto] })
+  async getAlerts(@CurrentUser() user: any) {
+    return this.monitoringService.getAlertsForUser(user);
   }
 
   @Get('alerts/:farmId')
-  @ApiOperation({ summary: 'Get alerts for a specific farm' })
-  @ApiResponse({ status: 200 })
-  async getFarmAlerts(@Param('farmId', UuidValidationPipe) farmId: string) {
-    return this.monitoringService.getAlerts(farmId);
+  @ApiOperation({ summary: 'Get unread alerts for a specific farm' })
+  @ApiResponse({ status: 200, type: [MonitoringAlertResponseDto] })
+  async getFarmAlerts(
+    @CurrentUser() user: any,
+    @Param('farmId', UuidValidationPipe) farmId: string,
+  ) {
+    return this.monitoringService.getAlertsForFarm(farmId, user);
   }
 
   @Put('alerts/:alertId/read')
