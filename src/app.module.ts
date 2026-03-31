@@ -17,6 +17,7 @@ import { ClaimsModule } from './claims/claims.module';
 import { PhotosModule } from './photos/photos.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { AdminModule } from './admin/admin.module';
+import { InsurerModule } from './insurer/insurer.module';
 import * as dns from 'dns';
 
 // Override DNS resolver to use Google DNS
@@ -56,7 +57,7 @@ dns.setServers(['8.8.8.8', '8.8.4.4']);
     PhotosModule,
     MonitoringModule,
     AdminModule,
+    InsurerModule,
   ],
 })
 export class AppModule {}
-

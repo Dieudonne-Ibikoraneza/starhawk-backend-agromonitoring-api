@@ -66,6 +66,7 @@ export class ClaimsRepository {
       .populate('farmerId')
       .populate('farmId')
       .populate('assessorId')
+      .populate('assessmentReportId')
       .exec();
   }
 

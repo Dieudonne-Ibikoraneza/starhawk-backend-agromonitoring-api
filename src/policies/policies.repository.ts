@@ -38,6 +38,8 @@ export class PoliciesRepository {
           { 'farmerId.id': farmerObjectId },
         ],
       })
+      .populate('farmId')
+      .populate('insurerId')
       .exec();
   }
 
@@ -52,15 +54,25 @@ export class PoliciesRepository {
           { 'insurerId.id': insurerObjectId },
         ],
       })
+      .populate('farmerId')
+      .populate('farmId')
       .exec();
   }
 
   async findByPolicyNumber(policyNumber: string): Promise<PolicyDocument | null> {
-    return this.policyModel.findOne({ policyNumber }).exec();
+    return this.policyModel
+      .findOne({ policyNumber })
+      .populate('farmerId')
+      .populate('farmId')
+      .exec();
   }
 
   async findAll(filters?: any): Promise<PolicyDocument[]> {
-    return this.policyModel.find(filters || {}).exec();
+    return this.policyModel
+      .find(filters || {})
+      .populate('farmerId')
+      .populate('farmId')
+      .exec();
   }
 
   async update(id: string, updateData: Partial<Policy>): Promise<PolicyDocument | null> {
