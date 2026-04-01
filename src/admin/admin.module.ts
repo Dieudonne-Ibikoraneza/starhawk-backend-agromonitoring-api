@@ -7,6 +7,7 @@ import { FarmsModule } from '../farms/farms.module';
 import { PoliciesModule } from '../policies/policies.module';
 import { ClaimsModule } from '../claims/claims.module';
 import { AssessmentsModule } from '../assessments/assessments.module';
+import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Farm, FarmSchema } from '../farms/schemas/farm.schema';
 import { Policy, PolicySchema } from '../policies/schemas/policy.schema';
@@ -27,6 +28,7 @@ import { Assessment, AssessmentSchema } from '../assessments/schemas/assessment.
     PoliciesModule,
     ClaimsModule,
     AssessmentsModule,
+    AgromonitoringModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

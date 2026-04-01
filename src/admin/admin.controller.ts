@@ -26,6 +26,22 @@ export class AdminController {
     return this.adminService.getSystemStatistics();
   }
 
+  @Get('health')
+  @ApiOperation({
+    summary: 'System health (DB, AGROmonitoring, EOSDA field API, storage, process)',
+  })
+  @ApiResponse({ status: 200 })
+  async getSystemHealth() {
+    return this.adminService.getSystemHealth();
+  }
+
+  @Get('policies/list')
+  @ApiOperation({ summary: 'List all policies (Admin only)' })
+  @ApiResponse({ status: 200 })
+  async getPoliciesList() {
+    return this.adminService.getAllPoliciesList();
+  }
+
   @Get('policies/overview')
   @ApiOperation({ summary: 'Get policy overview (Admin only)' })
   @ApiResponse({ status: 200 })

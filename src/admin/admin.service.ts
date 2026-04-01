@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { UsersRepository } from '../users/users.repository';
+import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { FarmsRepository } from '../farms/farms.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { ClaimsRepository } from '../claims/claims.repository';
@@ -20,6 +23,7 @@ export class AdminService {
     private policiesRepository: PoliciesRepository,
     private claimsRepository: ClaimsRepository,
     private assessmentsRepository: AssessmentsRepository,
+    private readonly agromonitoringService: AgromonitoringService,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(Farm.name) private farmModel: Model<Farm>,
     @InjectModel(Policy.name) private policyModel: Model<Policy>,
@@ -103,6 +107,10 @@ export class AdminService {
     };
   }
 
+  async getAllPoliciesList() {
+    return this.policiesRepository.findAll();
+  }
+
   async getClaimStatistics() {
     const claims = await this.claimModel.find({}).exec();
 
@@ -133,6 +141,174 @@ export class AdminService {
           ? (approvedClaims.length / totalClaims) * 100
           : 0,
     };
+  }
+
+  /**
+   * Live probes: MongoDB, AGROmonitoring weather, AGRO field API (EOSDA-compatible registry),
+   * local uploads storage size, Node heap / RSS.
+   */
+  async getSystemHealth() {
+    const checkedAt = new Date().toISOString();
+
+    const [database, agromonitoring, eosdaFields, storage] = await Promise.all([
+      this.checkDatabase(),
+      this.checkAgromonitoringWeather(),
+      this.checkEosdaFieldsApi(),
+      Promise.resolve(this.checkStorage()),
+    ]);
+
+    const mem = process.memoryUsage();
+    const processInfo = {
+      heapUsedMb: this.roundMb(mem.heapUsed),
+      heapTotalMb: this.roundMb(mem.heapTotal),
+      rssMb: this.roundMb(mem.rss),
+      externalMb: this.roundMb(mem.external),
+    };
+
+    const components = [database, agromonitoring, eosdaFields, storage];
+    const ok = components.filter((c) => c.status === 'ok').length;
+    const hasError = components.some((c) => c.status === 'error');
+    let overall: 'healthy' | 'degraded' | 'unhealthy';
+    if (hasError) {
+      overall = 'unhealthy';
+    } else if (ok === components.length) {
+      overall = 'healthy';
+    } else {
+      overall = 'degraded';
+    }
+
+    return {
+      checkedAt,
+      overall,
+      database,
+      agromonitoring,
+      eosdaFields,
+      storage,
+      process: processInfo,
+    };
+  }
+
+  private roundMb(bytes: number): number {
+    return Math.round((bytes / 1024 / 1024) * 100) / 100;
+  }
+
+  private async checkDatabase(): Promise<{
+    status: 'ok' | 'error';
+    latencyMs?: number;
+    detail?: string;
+  }> {
+    const start = Date.now();
+    try {
+      const nativeDb = this.userModel.db.db;
+      if (!nativeDb) {
+        return { status: 'error', detail: 'Database handle not available' };
+      }
+      await nativeDb.admin().command({ ping: 1 });
+      return { status: 'ok', latencyMs: Date.now() - start };
+    } catch (e: any) {
+      return { status: 'error', detail: e?.message || 'Ping failed' };
+    }
+  }
+
+  private async checkAgromonitoringWeather(): Promise<{
+    status: 'ok' | 'error';
+    latencyMs?: number;
+    detail?: string;
+  }> {
+    const start = Date.now();
+    try {
+      await this.agromonitoringService.weather.getWeatherForecast(-1.94, 29.87);
+      return { status: 'ok', latencyMs: Date.now() - start };
+    } catch (e: any) {
+      return {
+        status: 'error',
+        detail: this.truncateDetail(e?.message || String(e)),
+      };
+    }
+  }
+
+  /** Field list uses same AGRO / EOSDA-compatible API as farm registration. */
+  private async checkEosdaFieldsApi(): Promise<{
+    status: 'ok' | 'error';
+    latencyMs?: number;
+    fieldCount?: number;
+    detail?: string;
+  }> {
+    const start = Date.now();
+    try {
+      const fields = await this.agromonitoringService.fieldManagement.getAllFields();
+      const fieldCount = Array.isArray(fields) ? fields.length : 0;
+      return { status: 'ok', latencyMs: Date.now() - start, fieldCount };
+    } catch (e: any) {
+      return {
+        status: 'error',
+        detail: this.truncateDetail(e?.message || String(e)),
+      };
+    }
+  }
+
+  private checkStorage(): {
+    status: 'ok' | 'error';
+    uploadsPath: string;
+    usedBytes?: number;
+    usedLabel?: string;
+    detail?: string;
+  } {
+    const uploadsPath = path.join(process.cwd(), 'uploads');
+    try {
+      if (!fs.existsSync(uploadsPath)) {
+        return {
+          status: 'ok',
+          uploadsPath,
+          usedBytes: 0,
+          usedLabel: '0 B',
+          detail: 'Folder not created yet (no uploads)',
+        };
+      }
+      const usedBytes = this.directorySizeBytes(uploadsPath);
+      return {
+        status: 'ok',
+        uploadsPath,
+        usedBytes,
+        usedLabel: this.formatBytes(usedBytes),
+      };
+    } catch (e: any) {
+      return {
+        status: 'error',
+        uploadsPath,
+        detail: e?.message || 'Could not read uploads',
+      };
+    }
+  }
+
+  private directorySizeBytes(dir: string): number {
+    let size = 0;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          size += this.directorySizeBytes(full);
+        } else {
+          size += fs.statSync(full).size;
+        }
+      } catch {
+        // skip unreadable entries
+      }
+    }
+    return size;
+  }
+
+  private formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
+  private truncateDetail(s: string, max = 240): string {
+    if (!s) return '';
+    return s.length <= max ? s : `${s.slice(0, max)}…`;
   }
 }
 

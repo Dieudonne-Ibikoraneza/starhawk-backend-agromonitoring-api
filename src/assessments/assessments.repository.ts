@@ -18,10 +18,17 @@ export class AssessmentsRepository {
     return assessment.save();
   }
 
+  private farmWithFarmerPopulate() {
+    return {
+      path: 'farmId',
+      populate: { path: 'farmerId', select: 'firstName lastName email' },
+    } as const;
+  }
+
   async findById(id: string): Promise<AssessmentDocument | null> {
     return this.assessmentModel
       .findById(id)
-      .populate('farmId')
+      .populate(this.farmWithFarmerPopulate())
       .populate('assessorId')
       .populate('insurerId')
       .exec();
@@ -47,7 +54,7 @@ export class AssessmentsRepository {
     
     const assessments = await this.assessmentModel
       .find(query)
-      .populate('farmId')
+      .populate(this.farmWithFarmerPopulate())
       .populate('assessorId')
       .populate('insurerId')
       .exec();
@@ -76,7 +83,7 @@ export class AssessmentsRepository {
     
     const assessments = await this.assessmentModel
       .find(query)
-      .populate('farmId')
+      .populate(this.farmWithFarmerPopulate())
       .populate('assessorId')
       .populate('insurerId')
       .exec();
@@ -92,7 +99,7 @@ export class AssessmentsRepository {
     
     const assessments = await this.assessmentModel
       .find()
-      .populate('farmId')
+      .populate(this.farmWithFarmerPopulate())
       .populate('assessorId')
       .populate('insurerId')
       .exec();
@@ -121,7 +128,7 @@ export class AssessmentsRepository {
   async findByStatus(status: string): Promise<AssessmentDocument[]> {
     return this.assessmentModel
       .find({ status })
-      .populate('farmId')
+      .populate(this.farmWithFarmerPopulate())
       .exec();
   }
 

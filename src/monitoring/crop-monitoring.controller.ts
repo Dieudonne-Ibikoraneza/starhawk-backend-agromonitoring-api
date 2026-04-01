@@ -104,6 +104,15 @@ export class CropMonitoringController {
     return [];
   }
 
+  @Get('records/all')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'List all crop monitoring cycles (Admin only)' })
+  @ApiResponse({ status: 200 })
+  async getAllMonitoringRecordsAdmin() {
+    return this.cropMonitoringService.getAllMonitoringRecordsForAdmin();
+  }
+
   @Get('policy/:policyId')
   @ApiOperation({ summary: 'Get all monitoring records for a policy' })
   @ApiResponse({ status: 200 })
@@ -169,6 +178,15 @@ export class CropMonitoringController {
   @ApiResponse({ status: 200, type: [Object] })
   async getUploadedPdfs(@Param('id', UuidValidationPipe) id: string) {
     return this.cropMonitoringService.getUploadedPdfs(id);
+  }
+
+  @Get(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Get one monitoring cycle by id (Admin only)' })
+  @ApiResponse({ status: 200 })
+  async getMonitoringByIdAdmin(@Param('id', UuidValidationPipe) id: string) {
+    return this.cropMonitoringService.getMonitoringByIdForAdmin(id);
   }
 
   @Delete(':id/pdfs/:pdfType')

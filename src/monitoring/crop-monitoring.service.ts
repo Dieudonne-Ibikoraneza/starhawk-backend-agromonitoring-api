@@ -256,6 +256,20 @@ export class CropMonitoringService {
     return this.cropMonitoringRepository.findByPolicyId(policyId);
   }
 
+  /** All cycles — admin dashboard */
+  async getAllMonitoringRecordsForAdmin() {
+    return this.cropMonitoringRepository.findAll();
+  }
+
+  /** Single cycle — admin detail view */
+  async getMonitoringByIdForAdmin(id: string) {
+    const monitoring = await this.cropMonitoringRepository.findById(id);
+    if (!monitoring) {
+      throw new NotFoundException('CropMonitoring', id);
+    }
+    return monitoring;
+  }
+
   /**
    * Upload drone analysis PDF for crop monitoring
    */
