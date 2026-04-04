@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Types } from 'mongoose';
 import { PoliciesRepository } from './policies.repository';
 import { AssessmentsRepository } from '../assessments/assessments.repository';
@@ -7,7 +12,10 @@ import { UsersRepository } from '../users/users.repository';
 import { RiskScoringService } from '../assessments/services/risk-scoring.service';
 import { EmailService } from '../email/email.service';
 import { CreatePolicyDto } from './dto/create-policy.dto';
+import { FarmerRejectPolicyDto } from './dto/farmer-reject-policy.dto';
 import { PolicyStatus } from './schemas/policy.schema';
+import { AssessmentStatus } from '../assessments/enums/assessment-status.enum';
+import { Role } from '../users/enums/role.enum';
 
 @Injectable()
 export class PoliciesService {
@@ -60,8 +68,10 @@ export class PoliciesService {
       throw new BadRequestException('This assessment does not belong to your insurer');
     }
 
-    if (assessment.status !== 'SUBMITTED') {
-      throw new BadRequestException('Assessment must be submitted first');
+    if (assessment.status !== AssessmentStatus.APPROVED) {
+      throw new BadRequestException(
+        `Assessment must be approved by an insurer before a policy can be issued. Current status: ${assessment.status}`,
+      );
     }
 
     // Extract farm ID from assessment (handle both ObjectId and farm object cases)
@@ -102,16 +112,13 @@ export class PoliciesService {
       premiumAmount,
       startDate: createDto.startDate,
       endDate: createDto.endDate,
-      status: PolicyStatus.ACTIVE,
+      status: PolicyStatus.PENDING_ACCEPTANCE,
+      insurerAcknowledgedAt: new Date(),
     });
 
-    // Update farm status to INSURED
-    const farmId = farm._id as any;
-    await this.farmsRepository.update(farmId.toString(), {
-      status: 'INSURED' as any,
-    });
+    // Farm becomes INSURED only after the farmer accepts (see farmerAcknowledgePolicy).
 
-    // Send email notification to farmer
+    // Notify farmer that a policy is awaiting their acceptance
     try {
       const farmer = await this.usersRepository.findById(farm.farmerId.toString());
 
@@ -139,19 +146,145 @@ export class PoliciesService {
           });
       }
     } catch (error) {
-      // Log but don't fail policy issuance if email fails
       console.error(`Failed to send policy issuance notification: ${error.message}`);
     }
 
     return policy;
   }
 
-  async getPolicy(policyId: string) {
+  /**
+   * Farmer accepts the policy; coverage becomes ACTIVE and the farm is marked INSURED.
+   */
+  async farmerAcknowledgePolicy(farmerId: string, policyId: string) {
     const policy = await this.policiesRepository.findById(policyId);
     if (!policy) {
       throw new NotFoundException('Policy', policyId);
     }
-    return policy;
+
+    const policyFarmerId = this.normalizeRefId(policy.farmerId);
+    if (policyFarmerId !== farmerId) {
+      throw new ForbiddenException('This policy does not belong to you');
+    }
+
+    if (policy.status !== PolicyStatus.PENDING_ACCEPTANCE) {
+      throw new BadRequestException(
+        `This policy cannot be accepted in its current status: ${policy.status}`,
+      );
+    }
+
+    if (policy.farmerAcknowledgedAt) {
+      throw new BadRequestException('You have already accepted this policy');
+    }
+
+    if (!policy.insurerAcknowledgedAt) {
+      throw new BadRequestException('This policy is not ready for acceptance yet');
+    }
+
+    const farmRef = policy.farmId as Types.ObjectId | { _id?: Types.ObjectId };
+    const farmOid =
+      typeof farmRef === 'object' && farmRef !== null && '_id' in farmRef && farmRef._id
+        ? farmRef._id.toString()
+        : (farmRef as Types.ObjectId).toString();
+
+    await this.farmsRepository.update(farmOid, {
+      status: 'INSURED' as any,
+    });
+
+    return this.policiesRepository.update(policyId, {
+      farmerAcknowledgedAt: new Date(),
+      status: PolicyStatus.ACTIVE,
+    });
+  }
+
+  /**
+   * Farmer declines a pending policy; records reason and sets status DECLINED.
+   */
+  async farmerRejectPolicy(farmerId: string, policyId: string, dto: FarmerRejectPolicyDto) {
+    const policy = await this.policiesRepository.findById(policyId);
+    if (!policy) {
+      throw new NotFoundException('Policy', policyId);
+    }
+
+    const policyFarmerId = this.normalizeRefId(policy.farmerId);
+    if (policyFarmerId !== farmerId) {
+      throw new ForbiddenException('This policy does not belong to you');
+    }
+
+    if (policy.status !== PolicyStatus.PENDING_ACCEPTANCE) {
+      throw new BadRequestException(
+        `This policy cannot be declined in its current status: ${policy.status}`,
+      );
+    }
+
+    if (policy.farmerAcknowledgedAt) {
+      throw new BadRequestException('You have already accepted this policy');
+    }
+
+    const reason = dto.reason.trim();
+    if (reason.length < 5) {
+      throw new BadRequestException('Please provide a reason of at least 5 characters.');
+    }
+
+    return this.policiesRepository.update(policyId, {
+      status: PolicyStatus.DECLINED,
+      farmerRejectedAt: new Date(),
+      farmerRejectionReason: reason,
+    });
+  }
+
+  private normalizeRefId(ref: unknown): string {
+    if (ref == null) return '';
+    if (typeof ref === 'string') return ref;
+    const o = ref as { _id?: { toString: () => string }; toString?: () => string };
+    if (o._id) return o._id.toString();
+    return o.toString ? o.toString() : String(ref);
+  }
+
+  async getPolicy(
+    policyId: string,
+    viewer: { userId: string; role: string },
+  ) {
+    const policy = await this.policiesRepository.findById(policyId);
+    if (!policy) {
+      throw new NotFoundException('Policy', policyId);
+    }
+
+    const role = viewer.role as Role;
+
+    if (role === Role.ADMIN) {
+      return policy;
+    }
+
+    if (role === Role.FARMER) {
+      if (this.normalizeRefId(policy.farmerId) !== viewer.userId) {
+        throw new ForbiddenException('You cannot view this policy');
+      }
+      return policy;
+    }
+
+    if (role === Role.INSURER) {
+      if (this.normalizeRefId(policy.insurerId) !== viewer.userId) {
+        throw new ForbiddenException('You cannot view this policy');
+      }
+      return policy;
+    }
+
+    if (role === Role.ASSESSOR) {
+      const assessments = await this.assessmentsRepository.findByAssessorId(viewer.userId);
+      const policyFarmId = this.normalizeRefId(policy.farmId);
+      const allowed = assessments.some((a: any) => {
+        const farmId = a.farmId as any;
+        if (!farmId) return false;
+        const id = farmId._id ? farmId._id.toString() : farmId.toString();
+        return id === policyFarmId;
+      });
+      if (!allowed) {
+        throw new ForbiddenException('You cannot view this policy');
+      }
+      return policy;
+    }
+
+    throw new ForbiddenException('You cannot view this policy');
   }
 
   async getFarmerPolicies(farmerId: string) {

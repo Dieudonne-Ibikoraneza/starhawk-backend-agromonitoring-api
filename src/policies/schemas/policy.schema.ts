@@ -2,6 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 export enum PolicyStatus {
+  /** Issued by insurer; waiting for farmer acceptance before coverage is active. */
+  PENDING_ACCEPTANCE = 'PENDING_ACCEPTANCE',
+  /** Farmer declined the pending offer; not in force. */
+  DECLINED = 'DECLINED',
   ACTIVE = 'ACTIVE',
   EXPIRED = 'EXPIRED',
   CANCELLED = 'CANCELLED',
@@ -38,11 +42,26 @@ export class Policy {
   @Prop({ type: Date, required: true })
   endDate: Date;
 
-  @Prop({ enum: PolicyStatus, default: PolicyStatus.ACTIVE })
+  @Prop({ enum: PolicyStatus, default: PolicyStatus.PENDING_ACCEPTANCE })
   status: PolicyStatus;
 
   @Prop({ type: Date })
   issuedAt?: Date;
+
+  /** Set when the insurer issues the policy (binds the offer). */
+  @Prop({ type: Date })
+  insurerAcknowledgedAt?: Date;
+
+  /** Set when the farmer accepts; together with insurer ack, policy becomes ACTIVE. */
+  @Prop({ type: Date })
+  farmerAcknowledgedAt?: Date;
+
+  /** When the farmer declines a pending policy; paired with `farmerRejectionReason`. */
+  @Prop({ type: Date })
+  farmerRejectedAt?: Date;
+
+  @Prop({ type: String, trim: true })
+  farmerRejectionReason?: string;
 }
 
 export const PolicySchema = SchemaFactory.createForClass(Policy);

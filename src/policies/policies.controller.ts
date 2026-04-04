@@ -19,6 +19,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../users/enums/role.enum';
 import { CreatePolicyDto } from './dto/create-policy.dto';
+import { FarmerRejectPolicyDto } from './dto/farmer-reject-policy.dto';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('Policies')
@@ -40,11 +41,39 @@ export class PoliciesController {
     return this.policiesService.issuePolicy(user.userId, createDto);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get policy by ID' })
+  @Post(':id/farmer-acknowledge')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER)
+  @ApiOperation({ summary: 'Farmer accepts policy — coverage becomes ACTIVE' })
   @ApiResponse({ status: 200 })
-  async getPolicy(@Param('id', UuidValidationPipe) id: string) {
-    return this.policiesService.getPolicy(id);
+  async farmerAcknowledgePolicy(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.policiesService.farmerAcknowledgePolicy(user.userId, id);
+  }
+
+  @Post(':id/farmer-reject')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER)
+  @ApiOperation({ summary: 'Farmer declines a pending policy (requires reason)' })
+  @ApiResponse({ status: 200 })
+  async farmerRejectPolicy(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() dto: FarmerRejectPolicyDto,
+  ) {
+    return this.policiesService.farmerRejectPolicy(user.userId, id, dto);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get policy by ID (scoped to your role)' })
+  @ApiResponse({ status: 200 })
+  async getPolicy(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.policiesService.getPolicy(id, user);
   }
 
   @Get()
