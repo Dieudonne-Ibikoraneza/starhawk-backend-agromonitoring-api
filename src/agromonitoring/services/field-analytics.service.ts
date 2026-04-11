@@ -125,30 +125,117 @@ export class FieldAnalyticsService extends AgromonitoringBaseService {
   }
 
   /**
-   * Get NDVI time series for a field
-   * 
-   * API Endpoint: GET /ndvi/{fieldId}
-   * Query params: start, end
+   * Get NDVI time series for a field (polygon created via /agro/1.0/polygons).
+   *
+   * API: GET /agro/1.0/ndvi/history?polyid=...&start=UNIX&end=UNIX
+   * (see https://agromonitoring.com/api/history-ndvi)
    */
   async getNDVIData(request: NDVIDataRequest): Promise<NDVITimeSeriesResponse[]> {
-    this.logger.log(`Getting NDVI data for field ${request.fieldId} from ${request.start || request.startDate} to ${request.end || request.endDate}`);
-    
     const start = request.start || request.startDate;
     const end = request.end || request.endDate;
-    
+    this.logger.log(
+      `Getting NDVI history for polygon ${request.fieldId} from ${start} to ${end}`,
+    );
+
     if (!start || !end) {
       throw new Error('Start and end dates are required');
     }
-    
+
+    const { startSec, endSec } = this.toUnixRange(start, end);
     const params = new URLSearchParams({
-      start,
-      end,
+      polyid: request.fieldId,
+      start: String(startSec),
+      end: String(endSec),
     });
 
-    return this.makeRequest<NDVITimeSeriesResponse[]>(
-      'GET', 
-      `/ndvi/${request.fieldId}?${params.toString()}`,
+    const raw = await this.makeRequest<unknown>(
+      'GET',
+      `/agro/1.0/ndvi/history?${params.toString()}`,
     );
+
+    return this.normalizeNdviHistoryResponse(raw, request.fieldId);
+  }
+
+  private toUnixRange(start: string, end: string): { startSec: number; endSec: number } {
+    const parseOne = (s: string, edge: 'start' | 'end'): number => {
+      const t = s.trim();
+      if (/^\d{10}$/.test(t)) {
+        return parseInt(t, 10);
+      }
+      if (/^\d{13}$/.test(t)) {
+        return Math.floor(parseInt(t, 10) / 1000);
+      }
+      const iso = t.includes('T') ? t : `${t}T${edge === 'start' ? '00:00:00' : '23:59:59'}Z`;
+      const ms = Date.parse(iso);
+      if (Number.isNaN(ms)) {
+        throw new Error(`Invalid date: ${s}`);
+      }
+      return Math.floor(ms / 1000);
+    };
+    return { startSec: parseOne(start, 'start'), endSec: parseOne(end, 'end') };
+  }
+
+  private extractNdviHistoryArray(raw: unknown): unknown[] {
+    if (Array.isArray(raw)) {
+      return raw;
+    }
+    if (raw && typeof raw === 'object') {
+      const o = raw as Record<string, unknown>;
+      if (Array.isArray(o.data)) {
+        return o.data;
+      }
+      if (Array.isArray(o.history)) {
+        return o.history;
+      }
+    }
+    return [];
+  }
+
+  /** Map Agro NDVI history entries to a stable per-day series (mean NDVI 0–1). */
+  private normalizeNdviHistoryResponse(raw: unknown, fieldId: string): NDVITimeSeriesResponse[] {
+    const arr = this.extractNdviHistoryArray(raw);
+    const byDay = new Map<string, { sum: number; n: number }>();
+
+    for (const item of arr) {
+      if (item == null || typeof item !== 'object') {
+        continue;
+      }
+      const o = item as Record<string, unknown>;
+      const dt = o.dt;
+      let dateStr = '';
+      if (typeof dt === 'number') {
+        dateStr = new Date(dt * 1000).toISOString().split('T')[0];
+      } else if (typeof dt === 'string') {
+        dateStr = dt.includes('T') ? dt.split('T')[0] : dt;
+      }
+      if (!dateStr) {
+        continue;
+      }
+
+      const dataObj = o.data as Record<string, unknown> | undefined;
+      const meanRaw = dataObj?.mean ?? o.mean ?? o.ndvi;
+      const mean =
+        typeof meanRaw === 'number' ? meanRaw : parseFloat(String(meanRaw ?? ''));
+      if (!Number.isFinite(mean)) {
+        continue;
+      }
+
+      const prev = byDay.get(dateStr);
+      if (prev) {
+        prev.sum += mean;
+        prev.n += 1;
+      } else {
+        byDay.set(dateStr, { sum: mean, n: 1 });
+      }
+    }
+
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { sum, n }]) => ({
+        field_id: fieldId,
+        date,
+        ndvi: sum / n,
+      }));
   }
 
   /**
@@ -214,8 +301,8 @@ export class FieldAnalyticsService extends AgromonitoringBaseService {
 
   /**
    * Get field statistics (alias for getNDVIData for backward compatibility)
-   * 
-   * API Endpoint: GET /ndvi/{fieldId}
+   *
+   * Uses GET /agro/1.0/ndvi/history (requires polygon id from create polygon API).
    */
   async getStatistics(request: StatisticsRequest): Promise<NDVITimeSeriesResponse[]> {
     if (request.fieldId) {

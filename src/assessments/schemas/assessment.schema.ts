@@ -31,13 +31,13 @@ export class Assessment {
   reportText?: string;
 
   @Prop({ type: [{
-    pdfType: { type: String, enum: ['plant_health', 'flowering'], required: true },
+    pdfType: { type: String, required: true },
     pdfUrl: { type: String, required: true },
     droneAnalysisData: { type: Object },
     uploadedAt: { type: Date, default: Date.now }
   }] })
   droneAnalysisPdfs?: {
-    pdfType: 'plant_health' | 'flowering';
+    pdfType: string;
     pdfUrl: string;
     droneAnalysisData?: object;
     uploadedAt: Date;

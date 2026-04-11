@@ -77,6 +77,10 @@ export class AssessmentsService {
 
     const assessment = await this.assessmentsRepository.create(assessmentData);
 
+    if (farm.status === FarmStatus.PENDING) {
+      await this.farmsRepository.update(createDto.farmId, { status: FarmStatus.REGISTERED });
+    }
+
     // Notify assessor (email notification will be added)
     return assessment;
   }
@@ -281,12 +285,13 @@ export class AssessmentsService {
         // Get all farms for this farmer
         const farms = await this.farmsRepository.findByFarmerId(farmerDoc._id.toString());
 
-        // Filter farms: if assessorId provided, only include assigned farms
+        // Filter farms: if assessorId provided, only include farms with an assessment for this assessor
         let filteredFarms = farms;
-        if (assessorId && assignedFarmIds.length > 0) {
-          filteredFarms = farms.filter((farm: any) =>
-            assignedFarmIds.includes(farm._id.toString()),
-          );
+        if (assessorId) {
+          filteredFarms =
+            assignedFarmIds.length > 0
+              ? farms.filter((farm: any) => assignedFarmIds.includes(farm._id.toString()))
+              : [];
         }
 
         // Skip this farmer if no farms match the filter
@@ -367,9 +372,16 @@ export class AssessmentsService {
 
   async getPendingFarms(): Promise<PendingFarmResponseDto[]> {
     const farms = await this.farmsRepository.findByStatus(FarmStatus.PENDING);
+    // Do not list farms that already have an assessment (e.g. legacy rows still PENDING)
+    const withoutAssessment = [];
+    for (const farm of farms) {
+      const farmIdStr = (farm as any)._id.toString();
+      const existing = await this.assessmentsRepository.findByFarmId(farmIdStr);
+      if (!existing) withoutAssessment.push(farm);
+    }
 
     return Promise.all(
-      farms.map(async farm => {
+      withoutAssessment.map(async farm => {
         const farmDoc = farm as any;
         const farmer = farm.farmerId as any;
 
@@ -465,6 +477,9 @@ export class AssessmentsService {
 
     const assessment = await this.assessmentsRepository.create(assessmentData);
 
+    // Remove farm from admin "pending" queue — pending list is status === PENDING
+    await this.farmsRepository.update(farmId, { status: FarmStatus.REGISTERED });
+
     // Notify assessor about assignment
     try {
       const farmName = farm.name || `Farm ${farmId}`;
@@ -494,7 +509,7 @@ export class AssessmentsService {
     assessorId: string,
     assessmentId: string,
     pdfFile: Express.Multer.File,
-    pdfType: 'plant_health' | 'flowering',
+    pdfType?: string,
   ): Promise<any> {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
@@ -511,19 +526,12 @@ export class AssessmentsService {
       throw new BadRequestException('Only PDF files are allowed');
     }
 
-    // Validate PDF type
-    if (!['plant_health', 'flowering'].includes(pdfType)) {
-      throw new BadRequestException('PDF type must be either plant_health or flowering');
-    }
-
-    // Check if PDF of this type already exists
     const existingPdfs = assessment.droneAnalysisPdfs || [];
-    const existingPdf = existingPdfs.find(pdf => pdf.pdfType === pdfType);
-    if (existingPdf) {
-      throw new BadRequestException(
-        `A ${pdfType.replace('_', ' ')} PDF has already been uploaded for this assessment`,
-      );
-    }
+    const resolvedPdfType = this.resolvePdfTypeFromFileName(
+      pdfFile.originalname,
+      existingPdfs,
+      pdfType,
+    );
 
     // When using diskStorage, file.buffer is undefined - use file.path instead
     // When using memoryStorage, file.path is undefined - use file.buffer instead
@@ -544,7 +552,7 @@ export class AssessmentsService {
     // Generate unique filename
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 9);
-    const filename = `${pdfType}-${assessmentId}-${timestamp}-${randomStr}.pdf`;
+    const filename = `${resolvedPdfType}-${assessmentId}-${timestamp}-${randomStr}.pdf`;
     const filePath = path.join(uploadDir, filename);
 
     // Handle file based on storage type
@@ -594,7 +602,7 @@ export class AssessmentsService {
 
     // Create new PDF entry
     const newPdfEntry = {
-      pdfType,
+      pdfType: resolvedPdfType,
       pdfUrl,
       droneAnalysisData,
       uploadedAt: new Date(),
@@ -608,7 +616,7 @@ export class AssessmentsService {
 
     return {
       assessmentId,
-      pdfType,
+      pdfType: resolvedPdfType,
       pdfUrl,
       droneAnalysisData,
       assessment: updatedAssessment,
@@ -630,11 +638,7 @@ export class AssessmentsService {
   /**
    * Delete a specific PDF from an assessment
    */
-  async deletePdf(
-    assessorId: string,
-    assessmentId: string,
-    pdfType: 'plant_health' | 'flowering',
-  ): Promise<any> {
+  async deletePdf(assessorId: string, assessmentId: string, pdfType: string): Promise<any> {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
@@ -677,6 +681,30 @@ export class AssessmentsService {
       message: `${pdfType.replace('_', ' ')} PDF deleted successfully`,
       assessment: updatedAssessment,
     };
+  }
+
+  private resolvePdfTypeFromFileName(
+    originalFilename: string,
+    existingPdfs: Array<{ pdfType: string }>,
+    explicitPdfType?: string,
+  ): string {
+    const source = (explicitPdfType || originalFilename || 'drone_report')
+      .toLowerCase()
+      .replace(/\.pdf$/i, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    const baseType = source || 'drone_report';
+    const existingTypes = new Set(existingPdfs.map(pdf => pdf.pdfType));
+    if (!existingTypes.has(baseType)) {
+      return baseType;
+    }
+
+    let suffix = 2;
+    while (existingTypes.has(`${baseType}_${suffix}`)) {
+      suffix += 1;
+    }
+    return `${baseType}_${suffix}`;
   }
 
   /**
@@ -879,10 +907,10 @@ export class AssessmentsService {
     // Notify farmer and assessor
     try {
       const farm = await this.farmsRepository.findById(this.extractId(assessment.farmId));
-      const farmer = farm ? await this.usersRepository.findById(this.extractId(farm.farmerId)) : null;
-      const assessor = await this.usersRepository.findById(
-        this.extractId(assessment.assessorId),
-      );
+      const farmer = farm
+        ? await this.usersRepository.findById(this.extractId(farm.farmerId))
+        : null;
+      const assessor = await this.usersRepository.findById(this.extractId(assessment.assessorId));
 
       if (farmer) {
         await this.emailService
@@ -957,10 +985,10 @@ export class AssessmentsService {
     // Notify farmer and assessor
     try {
       const farm = await this.farmsRepository.findById(this.extractId(assessment.farmId));
-      const farmer = farm ? await this.usersRepository.findById(this.extractId(farm.farmerId)) : null;
-      const assessor = await this.usersRepository.findById(
-        this.extractId(assessment.assessorId),
-      );
+      const farmer = farm
+        ? await this.usersRepository.findById(this.extractId(farm.farmerId))
+        : null;
+      const assessor = await this.usersRepository.findById(this.extractId(assessment.assessorId));
 
       if (farmer) {
         await this.emailService

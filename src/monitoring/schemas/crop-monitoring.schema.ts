@@ -19,8 +19,8 @@ export class CropMonitoring {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   assessorId: Types.ObjectId;
 
-  @Prop({ type: Number, required: true, min: 1, max: 2 })
-  monitoringNumber: number; // 1 or 2, max 2 cycles per policy
+  @Prop({ type: Number, required: true, min: 1 })
+  monitoringNumber: number; // Monthly cycle number until crop harvest window
 
   @Prop({ type: Date, default: Date.now })
   monitoringDate: Date;

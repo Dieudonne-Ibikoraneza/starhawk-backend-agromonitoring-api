@@ -6,6 +6,7 @@ export enum LossEventType {
   HAIL = 'HAIL',
   FIRE = 'FIRE',
   STORM = 'STORM',
+  HARVEST_END = 'HARVEST_END',
   OTHER = 'OTHER',
 }
 

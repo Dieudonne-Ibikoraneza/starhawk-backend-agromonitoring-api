@@ -109,7 +109,13 @@ export class AssessmentsRepository {
   }
 
   async findByFarmId(farmId: string): Promise<AssessmentDocument | null> {
-    return this.assessmentModel.findOne({ farmId }).exec();
+    if (!farmId || !Types.ObjectId.isValid(farmId)) {
+      return null;
+    }
+    const oid = new Types.ObjectId(farmId);
+    return this.assessmentModel
+      .findOne({ farmId: oid })
+      .exec();
   }
 
   async isAssessorAssignedToFarm(

@@ -4,6 +4,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export enum PdfType {
   PLANT_HEALTH = 'plant_health',
   FLOWERING = 'flowering',
+  /** Single canonical report for field assessments (replaces choosing plant vs flowering in UI). */
+  DRONE_ANALYSIS = 'drone_analysis',
 }
 
 export class UploadDroneAnalysisDto {

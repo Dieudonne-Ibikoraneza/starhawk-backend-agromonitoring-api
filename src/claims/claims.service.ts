@@ -2,36 +2,56 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Types } from 'mongoose';
 import { ClaimsRepository } from './claims.repository';
 import { ClaimAssessmentsRepository } from './claim-assessments.repository';
 import { PayoutsRepository } from './payouts.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { UsersRepository } from '../users/users.repository';
+import { FarmsRepository } from '../farms/farms.repository';
 import { EmailService } from '../email/email.service';
 import { DamageAnalysisService } from './services/damage-analysis.service';
+import { AssessmentsRepository } from '../assessments/assessments.repository';
+import { CropMonitoringService } from '../monitoring/crop-monitoring.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimAssessmentDto } from './dto/update-claim-assessment.dto';
 import { ClaimStatus } from './enums/claim-status.enum';
+import { ClaimType } from './enums/claim-type.enum';
+import { LossEventType } from './enums/loss-event-type.enum';
 import { PayoutStatus } from './schemas/payout.schema';
 import { DroneAnalysisService } from '../assessments/services/drone-analysis.service';
 import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
+import { getCropHarvestDurationMonths } from '../farms/constants/crop-harvest-duration.constants';
 
 @Injectable()
 export class ClaimsService {
+  private readonly logger = new Logger(ClaimsService.name);
+
   constructor(
     private claimsRepository: ClaimsRepository,
     private claimAssessmentsRepository: ClaimAssessmentsRepository,
     private payoutsRepository: PayoutsRepository,
     private policiesRepository: PoliciesRepository,
     private usersRepository: UsersRepository,
+    private farmsRepository: FarmsRepository,
     private emailService: EmailService,
     private damageAnalysisService: DamageAnalysisService,
     private droneAnalysisService: DroneAnalysisService,
+    private assessmentsRepository: AssessmentsRepository,
+    private cropMonitoringService: CropMonitoringService,
   ) {}
 
   async fileClaim(farmerId: string, createDto: CreateClaimDto) {
+    if (
+      createDto.claimType &&
+      createDto.claimType !== ClaimType.FARMER_REPORTED_LOSS
+    ) {
+      throw new BadRequestException('Farmers can only submit FARMER_REPORTED_LOSS claims');
+    }
+
     // Verify policy belongs to farmer
     const policy = await this.policiesRepository.findById(createDto.policyId);
     if (!policy) {
@@ -47,15 +67,32 @@ export class ClaimsService {
       throw new BadRequestException('Policy is not active');
     }
 
+    const resolvedAssessorId = await this.resolveAssessorForPolicy(policy);
+
     const claim = await this.claimsRepository.create({
       policyId: new Types.ObjectId(createDto.policyId),
       farmerId: new Types.ObjectId(farmerId),
       farmId: policy.farmId as Types.ObjectId,
       lossEventType: createDto.lossEventType,
+      claimType: ClaimType.FARMER_REPORTED_LOSS,
       lossDescription: createDto.lossDescription,
       damagePhotos: createDto.damagePhotos,
       status: ClaimStatus.FILED,
+      assessorId: resolvedAssessorId ? new Types.ObjectId(resolvedAssessorId) : undefined,
     });
+
+    if (resolvedAssessorId) {
+      const assessment = await this.claimAssessmentsRepository.create({
+        claimId: new Types.ObjectId(this.extractId((claim as any)._id)),
+        assessorId: new Types.ObjectId(resolvedAssessorId),
+      });
+      const assessmentDoc = assessment as any;
+      const updatedClaim = await this.claimsRepository.update(this.extractId((claim as any)._id), {
+        assessmentReportId: assessmentDoc._id as Types.ObjectId,
+        status: ClaimStatus.ASSIGNED,
+      });
+      return updatedClaim || claim;
+    }
 
     // Send email notification to farmer
     try {
@@ -88,6 +125,78 @@ export class ClaimsService {
     }
 
     return claim;
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_6AM)
+  async autoSubmitHarvestClaims() {
+    this.logger.log('Checking active policies for harvest-due auto claims...');
+    const activePolicies = await this.policiesRepository.findAll({ status: 'ACTIVE' });
+
+    for (const policy of activePolicies) {
+      try {
+        await this.createHarvestClaimIfDue(policy);
+      } catch (error: any) {
+        this.logger.error(
+          `Failed harvest auto-claim check for policy ${this.extractId(policy._id)}: ${error.message}`,
+        );
+      }
+    }
+  }
+
+  private async createHarvestClaimIfDue(policy: any) {
+    const policyId = this.extractId(policy._id);
+    const farmId = this.extractId(policy.farmId);
+    const farmerId = this.extractId(policy.farmerId);
+
+    const farm = await this.farmsRepository.findById(farmId);
+    if (!farm?.sowingDate || !farm?.cropType) {
+      return;
+    }
+
+    const harvestMonths = getCropHarvestDurationMonths(farm.cropType);
+    const harvestDueDate = new Date(farm.sowingDate);
+    harvestDueDate.setDate(harvestDueDate.getDate() + Math.round(harvestMonths * 30));
+
+    if (new Date() < harvestDueDate) {
+      return;
+    }
+
+    const existingHarvestClaim = await this.claimsRepository.findByPolicyAndType(
+      policyId,
+      ClaimType.HARVEST_AUTO_SUBMISSION,
+    );
+    if (existingHarvestClaim) {
+      return;
+    }
+
+    const resolvedAssessorId = await this.resolveAssessorForPolicy(policy);
+
+    const claim = await this.claimsRepository.create({
+      policyId: new Types.ObjectId(policyId),
+      farmerId: new Types.ObjectId(farmerId),
+      farmId: new Types.ObjectId(farmId),
+      lossEventType: LossEventType.HARVEST_END,
+      claimType: ClaimType.HARVEST_AUTO_SUBMISSION,
+      lossDescription: `Harvest period completed for ${farm.cropType}. Auto-submitted after ${harvestMonths} months from sowing date.`,
+      status: ClaimStatus.FILED,
+      assessorId: resolvedAssessorId ? new Types.ObjectId(resolvedAssessorId) : undefined,
+    });
+
+    if (resolvedAssessorId) {
+      const assessment = await this.claimAssessmentsRepository.create({
+        claimId: new Types.ObjectId(this.extractId((claim as any)._id)),
+        assessorId: new Types.ObjectId(resolvedAssessorId),
+      });
+      const assessmentDoc = assessment as any;
+      await this.claimsRepository.update(this.extractId((claim as any)._id), {
+        assessmentReportId: assessmentDoc._id as Types.ObjectId,
+        status: ClaimStatus.ASSIGNED,
+      });
+    }
+
+    this.logger.log(
+      `Created harvest auto-claim ${this.extractId((claim as any)._id)} for policy ${policyId}`,
+    );
   }
 
   async assignAssessor(insurerId: string, claimId: string, assessorId: string) {
@@ -218,12 +327,16 @@ export class ClaimsService {
         claim.filedAt,
       );
     } catch (error) {
-      console.error('Damage analysis failed:', error);
+      this.logger.warn(
+        `Damage analysis failed for claim ${claimId}: ${(error as Error)?.message}`,
+      );
       return {
-        ndviBefore: 0.7, // Fallbacks
-        ndviAfter: 0.4,
-        damagePercentage: 40,
-        estimatedDamageArea: 0,
+        ndviBefore: null,
+        ndviAfter: null,
+        damagePercentage: null,
+        estimatedDamageArea: null,
+        error:
+          'Satellite-based NDVI comparison could not be computed (EOSDA/field setup). Enter values manually if needed.',
       };
     }
   }
@@ -393,6 +506,58 @@ export class ClaimsService {
     if (!id) return '';
     if (typeof id === 'string') return id;
     return id._id ? id._id.toString() : id.toString();
+  }
+
+  private async resolveAssessorForPolicy(policy: any): Promise<string | null> {
+    const policyId = this.extractId(policy._id);
+    const farmId = this.extractId(policy.farmId);
+
+    // 1. Try to find the assessor from the latest crop monitoring (most up-to-date)
+    try {
+      const policyMonitoring =
+        await this.cropMonitoringService.getPolicyMonitoringRecords(policyId);
+      if (policyMonitoring.length > 0) {
+        const latestMonitoring = policyMonitoring[policyMonitoring.length - 1];
+        const assessorId = this.extractId(latestMonitoring.assessorId);
+        if (assessorId) {
+          this.logger.debug(
+            `Resolved assessor ${assessorId} from latest monitoring cycle for policy ${policyId}`,
+          );
+          return assessorId;
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to check monitoring records for policy ${policyId}: ${error.message}`,
+      );
+    }
+
+    // 2. Fallback to the specific assessment record linked to or associated with this policy
+    if (policy.assessmentId) {
+      const assessment = await this.assessmentsRepository.findById(
+        this.extractId(policy.assessmentId),
+      );
+      const assessmentAssessorId = this.extractId(assessment?.assessorId);
+      if (assessmentAssessorId) {
+        this.logger.debug(
+          `Resolved assessor ${assessmentAssessorId} from policy-linked assessment`,
+        );
+        return assessmentAssessorId;
+      }
+    }
+
+    // 3. Search for any assessment for this farm as final fallback
+    const assessmentByFarm = await this.assessmentsRepository.findByFarmId(farmId);
+    const farmAssessorId = this.extractId(assessmentByFarm?.assessorId);
+    if (farmAssessorId) {
+      this.logger.debug(
+        `Resolved assessor ${farmAssessorId} from farm lookup fallback`,
+      );
+      return farmAssessorId;
+    }
+
+    this.logger.warn(`Could not resolve assessor for policy ${policyId}`);
+    return null;
   }
 
   async getAllClaims() {

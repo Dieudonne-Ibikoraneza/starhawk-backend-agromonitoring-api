@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Claim, ClaimDocument } from './schemas/claim.schema';
+import { ClaimType } from './enums/claim-type.enum';
 
 @Injectable()
 export class ClaimsRepository {
@@ -42,6 +43,20 @@ export class ClaimsRepository {
 
   async findByStatus(status: string): Promise<ClaimDocument[]> {
     return this.claimModel.find({ status }).populate('farmerId').exec();
+  }
+
+  async findByPolicyAndType(policyId: string, claimType: ClaimType): Promise<ClaimDocument | null> {
+    return this.claimModel
+      .findOne({
+        policyId: new Types.ObjectId(policyId),
+        claimType,
+      })
+      .populate('policyId')
+      .populate('farmerId')
+      .populate('farmId')
+      .populate('assessorId')
+      .populate('assessmentReportId')
+      .exec();
   }
 
   async findByAssessorId(assessorId: string): Promise<ClaimDocument[]> {

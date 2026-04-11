@@ -9,6 +9,7 @@ import { CropMonitoringStatus } from './schemas/crop-monitoring.schema';
 import { Types } from 'mongoose';
 import { DroneAnalysisService } from '../assessments/services/drone-analysis.service';
 import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
+import { getRequiredMonitoringCycles } from '../farms/constants/crop-harvest-duration.constants';
 
 @Injectable()
 export class CropMonitoringService {
@@ -26,7 +27,7 @@ export class CropMonitoringService {
 
   /**
    * Start a new crop monitoring cycle
-   * Validates max 2 cycles per policy
+   * Validates max cycles per policy based on crop type
    */
   async startMonitoring(assessorId: string, policyId: string): Promise<any> {
     // Validate policy exists
@@ -53,18 +54,6 @@ export class CropMonitoringService {
       throw new BadRequestException('Policy is not active');
     }
 
-    // Check existing monitoring cycles for this policy
-    this.logger.log(`Checking existing monitoring cycles for policy: ${policyId}`);
-    const existingCount = await this.cropMonitoringRepository.countByPolicyId(policyId);
-    this.logger.debug(`Existing monitoring cycles count: ${existingCount}`);
-
-    if (existingCount >= 2) {
-      throw new BadRequestException('Maximum 2 monitoring cycles allowed per policy');
-    }
-
-    // Determine monitoring number (1 or 2)
-    const monitoringNumber = existingCount + 1;
-
     // Resolve farm ID (handle populated vs. unpopulated references)
     const resolvedFarmId = this.extractId(policy.farmId);
 
@@ -73,6 +62,34 @@ export class CropMonitoringService {
     if (!farm) {
       throw new NotFoundException('Farm', this.extractId(policy.farmId));
     }
+
+    // Check existing monitoring cycles for this policy
+    this.logger.log(`Checking existing monitoring cycles for policy: ${policyId}`);
+    const existingCycles = await this.cropMonitoringRepository.findByPolicyId(policyId);
+    const completedCount = existingCycles.filter(
+      c => c.status === CropMonitoringStatus.COMPLETED,
+    ).length;
+    const hasActive = existingCycles.some(c => c.status === CropMonitoringStatus.IN_PROGRESS);
+
+    const maxCycles = getRequiredMonitoringCycles(farm.cropType);
+    this.logger.debug(
+      `Monitoring cycles: ${completedCount} completed, ${
+        hasActive ? 1 : 0
+      } active / ${maxCycles} max`,
+    );
+
+    if (hasActive) {
+      throw new BadRequestException('A monitoring cycle is already in progress for this policy.');
+    }
+
+    if (completedCount >= maxCycles) {
+      throw new BadRequestException(
+        `Maximum ${maxCycles} monitoring cycles have been completed for this ${farm.cropType} crop.`,
+      );
+    }
+
+    // Determine monitoring number
+    const monitoringNumber = existingCycles.length + 1;
 
     // Fetch weather data from AGROmonitoring (if coordinates available)
     let weatherData: object | undefined = undefined;
@@ -104,7 +121,7 @@ export class CropMonitoringService {
 
     this.logger.log(`Crop monitoring cycle ${monitoringNumber} started for policy ${policyId}`);
 
-    return monitoring;
+    return this.attachRecommendation(monitoring, farm);
   }
 
   /**
@@ -177,7 +194,9 @@ export class CropMonitoringService {
       // Check if anyway uploaded PDFs have extraction failures
       const pdfsWithoutData = uploadedPdfs.filter((pdf: any) => !pdf.droneAnalysisData);
       if (pdfsWithoutData.length > 0) {
-        const pdfTypes = pdfsWithoutData.map((pdf: any) => pdf.pdfType.replace('_', ' ')).join(', ');
+        const pdfTypes = pdfsWithoutData
+          .map((pdf: any) => pdf.pdfType.replace('_', ' '))
+          .join(', ');
         missingFields.push(`Data extraction for ${pdfTypes} report(s)`);
       }
     }
@@ -246,19 +265,36 @@ export class CropMonitoringService {
    * Get all monitoring tasks for an assessor
    */
   async getAssessorMonitoringTasks(assessorId: string): Promise<any[]> {
-    return this.cropMonitoringRepository.findByAssessorId(assessorId);
+    const records = await this.cropMonitoringRepository.findByAssessorId(assessorId);
+    return Promise.all(
+      records.map(async record => {
+        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
+        return this.attachRecommendation(record, farm);
+      }),
+    );
   }
 
   /**
    * Get all monitoring records for a policy
    */
   async getPolicyMonitoringRecords(policyId: string): Promise<any[]> {
-    return this.cropMonitoringRepository.findByPolicyId(policyId);
+    const records = await this.cropMonitoringRepository.findByPolicyId(policyId);
+    if (records.length === 0) {
+      return [];
+    }
+    const farm = await this.farmsRepository.findById(this.extractId(records[0].farmId));
+    return records.map(record => this.attachRecommendation(record, farm));
   }
 
   /** All cycles — admin dashboard */
   async getAllMonitoringRecordsForAdmin() {
-    return this.cropMonitoringRepository.findAll();
+    const records = await this.cropMonitoringRepository.findAll();
+    return Promise.all(
+      records.map(async record => {
+        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
+        return this.attachRecommendation(record, farm);
+      }),
+    );
   }
 
   /** Single cycle — admin detail view */
@@ -267,7 +303,8 @@ export class CropMonitoringService {
     if (!monitoring) {
       throw new NotFoundException('CropMonitoring', id);
     }
-    return monitoring;
+    const farm = await this.farmsRepository.findById(this.extractId(monitoring.farmId));
+    return this.attachRecommendation(monitoring, farm);
   }
 
   /**
@@ -336,7 +373,7 @@ export class CropMonitoringService {
     try {
       this.logger.log(`Calling drone analysis service for: ${absoluteFilePath}`);
       const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
-      
+
       if (analysisResult.success && analysisResult.extractedData) {
         droneAnalysisData = analysisResult.extractedData;
         this.logger.log('Successfully extracted drone data');
@@ -429,5 +466,21 @@ export class CropMonitoringService {
     if (typeof id === 'string') return id;
     if (id instanceof Types.ObjectId) return id.toString();
     return id._id ? id._id.toString() : id.toString();
+  }
+
+  private attachRecommendation(monitoring: any, farm: any) {
+    if (!farm?.sowingDate || !farm?.cropType) {
+      return monitoring;
+    }
+
+    const totalRecommendedCycles = getRequiredMonitoringCycles(farm.cropType);
+    const nextMonitoringDate = new Date(farm.sowingDate);
+    nextMonitoringDate.setDate(nextMonitoringDate.getDate() + monitoring.monitoringNumber * 30);
+
+    return {
+      ...(monitoring.toObject?.() ?? monitoring),
+      totalRecommendedCycles,
+      recommendedNextMonitoringDate: nextMonitoringDate.toISOString(),
+    };
   }
 }

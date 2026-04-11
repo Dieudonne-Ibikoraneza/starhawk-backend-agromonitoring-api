@@ -14,7 +14,7 @@ export class AssessmentReportResponseDto {
     required: false
   })
   droneAnalysisPdfs?: {
-    pdfType: 'plant_health' | 'flowering';
+    pdfType: 'plant_health' | 'flowering' | 'drone_analysis';
     pdfUrl: string;
     droneAnalysisData?: object;
     uploadedAt: Date;

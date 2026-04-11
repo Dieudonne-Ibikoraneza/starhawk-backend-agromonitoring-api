@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { ClaimStatus } from '../enums/claim-status.enum';
 import { LossEventType } from '../enums/loss-event-type.enum';
+import { ClaimType } from '../enums/claim-type.enum';
 
 export type ClaimDocument = Claim & Document;
 
@@ -21,6 +22,9 @@ export class Claim {
 
   @Prop({ enum: LossEventType, required: true })
   lossEventType: LossEventType;
+
+  @Prop({ enum: ClaimType, required: true, default: ClaimType.FARMER_REPORTED_LOSS })
+  claimType: ClaimType;
 
   @Prop({ type: String })
   lossDescription?: string;
@@ -54,4 +58,5 @@ ClaimSchema.index({ farmerId: 1 });
 ClaimSchema.index({ farmId: 1 });
 ClaimSchema.index({ status: 1 });
 ClaimSchema.index({ assessorId: 1 });
+ClaimSchema.index({ claimType: 1 });
 

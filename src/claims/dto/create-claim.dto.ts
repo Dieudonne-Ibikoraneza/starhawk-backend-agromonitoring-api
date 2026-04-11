@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsEnum, IsOptional, IsArray } from 'class-validator';
 import { LossEventType } from '../enums/loss-event-type.enum';
+import { ClaimType } from '../enums/claim-type.enum';
 
 export class CreateClaimDto {
   @ApiProperty({ description: 'Policy ID' })
@@ -23,5 +24,15 @@ export class CreateClaimDto {
   @IsArray()
   @IsString({ each: true })
   damagePhotos?: string[];
+
+  @ApiProperty({
+    required: false,
+    enum: ClaimType,
+    default: ClaimType.FARMER_REPORTED_LOSS,
+    description: 'Claim type. Farmer-created claims are always FARMER_REPORTED_LOSS.',
+  })
+  @IsOptional()
+  @IsEnum(ClaimType)
+  claimType?: ClaimType;
 }
 

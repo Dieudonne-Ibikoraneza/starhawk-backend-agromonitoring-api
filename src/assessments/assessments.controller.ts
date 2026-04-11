@@ -35,7 +35,6 @@ import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { AssignAssessorDto } from './dto/assign-assessor.dto';
 import { RejectAssessmentDto } from './dto/reject-assessment.dto';
-import { UploadDroneAnalysisDto, PdfType } from './dto/upload-drone-analysis.dto';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('Assessments')
@@ -175,12 +174,17 @@ export class AssessmentsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload drone analysis PDF (Assessor only)' })
   @ApiResponse({ status: 200 })
-  @ApiQuery({ name: 'pdfType', enum: PdfType, required: true, description: 'Type of PDF being uploaded' })
+  @ApiQuery({
+    name: 'pdfType',
+    required: false,
+    description:
+      'Optional custom report type key. If omitted, backend derives report type from uploaded filename.',
+  })
   async uploadDronePdf(
     @CurrentUser() user: any,
     @Param('id', UuidValidationPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
-    @Query('pdfType') pdfType: PdfType,
+    @Query('pdfType') pdfType?: string,
   ) {
     // Validate file exists
     if (!file) {
@@ -218,7 +222,7 @@ export class AssessmentsController {
   async deletePdf(
     @CurrentUser() user: any,
     @Param('id', UuidValidationPipe) id: string,
-    @Param('pdfType') pdfType: PdfType,
+    @Param('pdfType') pdfType: string,
   ) {
     return this.assessmentsService.deletePdf(
       user.userId,

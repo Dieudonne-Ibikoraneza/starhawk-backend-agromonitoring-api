@@ -38,6 +38,12 @@ export class FarmsService {
     private usersRepository: UsersRepository,
   ) {}
 
+  /** True if farm has a stored polygon / multipolygon boundary (GeoJSON coordinates). */
+  private farmHasBoundaryGeometry(farm: { boundary?: { coordinates?: unknown } }): boolean {
+    const coords = farm.boundary?.coordinates;
+    return Array.isArray(coords) && coords.length > 0;
+  }
+
   /**
    * Create a simple farm registration with only crop type and sowing date
    * This is called by farmers to register a farm without geometry
@@ -121,7 +127,9 @@ export class FarmsService {
 
   /**
    * Upload KML file for a farm by assessor
-   * This completes the farm registration by adding geometry and creating EOSDA field
+   * This completes the farm registration by adding geometry and creating EOSDA field.
+   * Allowed when: status is PENDING, or status is REGISTERED but geometry is not set yet
+   * (e.g. admin assigned an assessor before KML was uploaded).
    */
   async uploadKMLForFarm(
     assessorId: string,
@@ -135,10 +143,21 @@ export class FarmsService {
       throw new NotFoundException('Farm', farmId);
     }
 
-    // Validate farm is in PENDING status
-    if (farm.status !== FarmStatus.PENDING) {
+    const canAcceptKml =
+      farm.status === FarmStatus.PENDING ||
+      (farm.status === FarmStatus.REGISTERED && !this.farmHasBoundaryGeometry(farm));
+
+    if (!canAcceptKml) {
+      if (
+        farm.status === FarmStatus.REGISTERED &&
+        this.farmHasBoundaryGeometry(farm)
+      ) {
+        throw new BadRequestException(
+          'This farm already has field boundary geometry. KML cannot be uploaded again.',
+        );
+      }
       throw new BadRequestException(
-        `Farm is already ${farm.status}. Only farms with PENDING status can have KML uploaded.`,
+        `Farm status is ${farm.status}. KML upload is only allowed for pending farms, or registered farms that do not have boundary geometry yet.`,
       );
     }
 
@@ -836,40 +855,25 @@ export class FarmsService {
   }
 
   /**
-   * Get vegetation indices statistics (NDVI, MSAVI, NDMI, EVI) for a farm
-   * Can use either eosdaFieldId (faster) or geometry (boundary)
+   * NDVI time series via AGROmonitoring (polygon required). Extra index/sensor args are kept for API compatibility but are not used by the Agro NDVI history endpoint.
    */
   async getIndicesStatistics(
     farmId: string,
     dateStart: string,
     dateEnd: string,
-    indices?: string[],
-    sensors?: ('sentinel2' | 'sentinel1')[],
-    limit?: number,
-    excludeCoverPixels?: boolean,
-    cloudMaskingLevel?: 'best' | 'normal' | 'basic',
+    _indices?: string[],
+    _sensors?: ('sentinel2' | 'sentinel1')[],
+    _limit?: number,
+    _excludeCoverPixels?: boolean,
+    _cloudMaskingLevel?: 'best' | 'normal' | 'basic',
   ) {
-    const farm = await this.getFarmForAnalytics(farmId);
-
-    const request: any = {
-      startDate: dateStart,
-      endDate: dateEnd,
-      indices: indices || ['NDVI', 'MSAVI', 'NDMI', 'EVI'],
-      sensors: sensors || ['sentinel2'],
-      limit: limit || 100,
-      excludeCoverPixels: excludeCoverPixels !== undefined ? excludeCoverPixels : true,
-      cloudMaskingLevel: cloudMaskingLevel || 'best',
-    };
-
-    // Prefer fieldId (faster), fallback to geometry
-    if (farm.eosdaFieldId) {
-      request.fieldId = farm.eosdaFieldId;
-    } else if (farm.boundary) {
-      request.geometry = farm.boundary;
+    const polyId = await this.resolveAgromonitoringPolygonId(farmId);
+    if (!polyId) {
+      return [];
     }
 
     return this.agromonitoringService.fieldAnalytics.getStatistics({
-      fieldId: farm.eosdaFieldId,
+      fieldId: polyId,
       startDate: dateStart,
       endDate: dateEnd,
     });
@@ -880,22 +884,16 @@ export class FarmsService {
    * Convenience method that uses getIndicesStatistics with NDVI only
    */
   async getNDVITimeSeries(farmId: string, dateStart: string, dateEnd: string) {
-    const farm = await this.getFarmForAnalytics(farmId);
-
-    const request: any = {
-      startDate: dateStart,
-      endDate: dateEnd,
-      indices: ['NDVI'],
-    };
-
-    // Prefer fieldId (faster), fallback to geometry
-    if (farm.eosdaFieldId) {
-      request.fieldId = farm.eosdaFieldId;
-    } else if (farm.boundary) {
-      request.geometry = farm.boundary;
+    const polyId = await this.resolveAgromonitoringPolygonId(farmId);
+    if (!polyId) {
+      return [];
     }
 
-    return this.agromonitoringService.fieldAnalytics.getNDVITimeSeries(request);
+    return this.agromonitoringService.fieldAnalytics.getNDVITimeSeries({
+      fieldId: polyId,
+      startDate: dateStart,
+      endDate: dateEnd,
+    });
   }
 
   /**
@@ -906,19 +904,18 @@ export class FarmsService {
     farmId: string,
     dateStart: string,
     dateEnd: string,
-    index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
-    dataSource?: 'S2' | 'S1',
+    _index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
+    _dataSource?: 'S2' | 'S1',
   ): Promise<any> {
-    const farm = await this.getFarmForAnalytics(farmId);
-
-    if (!farm.eosdaFieldId) {
+    const polyId = await this.resolveAgromonitoringPolygonId(farmId);
+    if (!polyId) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for field trend. Please register farm with EOSDA first.',
+        'Farm must have a boundary and AGROmonitoring polygon for field trend. Register the farm or fix AGROmonitoring configuration.',
       );
     }
 
     return this.agromonitoringService.fieldAnalytics.getNDVIData({
-      fieldId: farm.eosdaFieldId,
+      fieldId: polyId,
       start: dateStart,
       end: dateEnd,
     });
@@ -931,22 +928,43 @@ export class FarmsService {
     farmId: string,
     dateStart: string,
     dateEnd: string,
-    index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
-    dataSource?: 'S2' | 'S1',
+    _index?: 'NDVI' | 'MSAVI' | 'NDMI' | 'EVI',
+    _dataSource?: 'S2' | 'S1',
   ): Promise<any> {
-    const farm = await this.getFarmForAnalytics(farmId);
-
-    if (!farm.eosdaFieldId) {
+    const polyId = await this.resolveAgromonitoringPolygonId(farmId);
+    if (!polyId) {
       throw new BadRequestException(
-        'Farm must have EOSDA field ID for field trend. Please register farm with EOSDA first.',
+        'Farm must have a boundary and AGROmonitoring polygon for NDVI. Register the farm or fix AGROmonitoring configuration.',
       );
     }
 
     return this.agromonitoringService.fieldAnalytics.getNDVIData({
-      fieldId: farm.eosdaFieldId,
+      fieldId: polyId,
       start: dateStart,
       end: dateEnd,
     });
+  }
+
+  /**
+   * Returns stored AGRO polygon id, or creates one from farm.boundary when missing.
+   */
+  private async resolveAgromonitoringPolygonId(farmId: string): Promise<string | undefined> {
+    const farm = await this.getFarmForAnalytics(farmId);
+    if (farm.eosdaFieldId) {
+      return farm.eosdaFieldId;
+    }
+    if (!farm.boundary) {
+      return undefined;
+    }
+    try {
+      const updated = await this.registerWithAgromonitoring(farmId);
+      return updated.eosdaFieldId;
+    } catch (error: any) {
+      this.logger.warn(
+        `Farm ${farmId}: could not obtain AGROmonitoring polygon id: ${error?.message ?? error}`,
+      );
+      return undefined;
+    }
   }
 
   /**
