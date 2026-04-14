@@ -66,7 +66,7 @@ services:
       
       # Drone Analysis Service
       - key: DRONE_ANALYSIS_SERVICE_URL
-        value: https://drone-pdf-extractor-zx7l.onrender.com
+        value: https://drone-script-extractor.onrender.com
       
       # File Upload
       - key: UPLOAD_DIR
