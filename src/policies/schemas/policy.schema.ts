@@ -69,6 +69,5 @@ export const PolicySchema = SchemaFactory.createForClass(Policy);
 PolicySchema.index({ farmerId: 1 });
 PolicySchema.index({ farmId: 1 });
 PolicySchema.index({ insurerId: 1 });
-PolicySchema.index({ policyNumber: 1 });
 PolicySchema.index({ status: 1 });
 

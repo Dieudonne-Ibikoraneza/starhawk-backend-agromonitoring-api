@@ -80,4 +80,14 @@ export class CropMonitoringRepository {
       .sort({ createdAt: -1 })
       .exec();
   }
+
+  async findByPolicyIds(policyIds: Types.ObjectId[]): Promise<CropMonitoringDocument[]> {
+    return this.cropMonitoringModel
+      .find({ policyId: { $in: policyIds } })
+      .populate('policyId')
+      .populate('farmId')
+      .populate('assessorId')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
 }

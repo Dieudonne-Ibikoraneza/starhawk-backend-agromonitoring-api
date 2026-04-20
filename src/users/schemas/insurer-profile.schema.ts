@@ -36,5 +36,3 @@ export class InsurerProfile {
 export const InsurerProfileSchema =
   SchemaFactory.createForClass(InsurerProfile);
 
-InsurerProfileSchema.index({ userId: 1 });
-

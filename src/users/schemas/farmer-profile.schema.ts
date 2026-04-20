@@ -27,5 +27,4 @@ export class FarmerProfile {
 export const FarmerProfileSchema =
   SchemaFactory.createForClass(FarmerProfile);
 
-FarmerProfileSchema.index({ userId: 1 });
 

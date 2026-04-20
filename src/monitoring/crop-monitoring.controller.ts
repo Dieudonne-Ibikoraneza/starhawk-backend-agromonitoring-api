@@ -100,7 +100,11 @@ export class CropMonitoringController {
     if (user.role === Role.ASSESSOR) {
       return this.cropMonitoringService.getAssessorMonitoringTasks(user.userId);
     }
-    // ADMIN/INSURER: See all (can be extended later)
+    // INSURER: See monitoring for their policies
+    if (user.role === Role.INSURER) {
+      return this.cropMonitoringService.getInsurerMonitoringTasks(user.userId);
+    }
+    // ADMIN: See all (via specialized endpoint records/all, or maybe just return [] here)
     return [];
   }
 

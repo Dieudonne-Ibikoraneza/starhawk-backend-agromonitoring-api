@@ -27,5 +27,4 @@ export class AssessorProfile {
 export const AssessorProfileSchema =
   SchemaFactory.createForClass(AssessorProfile);
 
-AssessorProfileSchema.index({ userId: 1 });
 

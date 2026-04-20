@@ -275,6 +275,26 @@ export class CropMonitoringService {
   }
 
   /**
+   * Get all monitoring tasks for an insurer
+   */
+  async getInsurerMonitoringTasks(insurerId: string): Promise<any[]> {
+    const policies = await this.policiesRepository.findByInsurerId(insurerId);
+    const policyIds = policies.map(p => new Types.ObjectId(p._id as string));
+
+    if (policyIds.length === 0) {
+      return [];
+    }
+
+    const records = await this.cropMonitoringRepository.findByPolicyIds(policyIds);
+    return Promise.all(
+      records.map(async record => {
+        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
+        return this.attachRecommendation(record, farm);
+      }),
+    );
+  }
+
+  /**
    * Get all monitoring records for a policy
    */
   async getPolicyMonitoringRecords(policyId: string): Promise<any[]> {
