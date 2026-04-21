@@ -59,6 +59,44 @@ export class InsurerProfileDto {
 
   @ApiProperty()
   companyLogoUrl?: string;
+
+  @ApiProperty()
+  bio?: string;
+
+  @ApiProperty()
+  profilePictureUrl?: string;
+
+  @ApiProperty()
+  province?: string;
+
+  @ApiProperty()
+  district?: string;
+
+  @ApiProperty()
+  sector?: string;
+
+  @ApiProperty()
+  cell?: string;
+
+  @ApiProperty()
+  village?: string;
+
+  @ApiProperty()
+  officialEmail?: string;
+
+  @ApiProperty()
+  officialPhone?: string;
+
+  @ApiProperty({ type: [String] })
+  specializations?: string[];
+
+  @ApiProperty()
+  socialMedia?: {
+    twitter?: string;
+    linkedin?: string;
+    facebook?: string;
+    instagram?: string;
+  };
 }
 
 export class UserProfileResponseDto {

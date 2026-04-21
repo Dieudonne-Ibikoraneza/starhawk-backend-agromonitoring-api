@@ -5,9 +5,12 @@ import { PhotosService } from './photos.service';
 import { PhotosRepository } from './photos.repository';
 import { Photo, PhotoSchema } from './schemas/photo.schema';
 
+import { UsersModule } from '../users/users.module';
+
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Photo.name, schema: PhotoSchema }]),
+    UsersModule,
   ],
   controllers: [PhotosController],
   providers: [PhotosService, PhotosRepository],

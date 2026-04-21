@@ -14,8 +14,8 @@ export class AssessorProfile {
   @Prop({ type: Number })
   experienceYears?: number;
 
-  @Prop()
-  profilePhotoUrl?: string;
+  @Prop({ type: String })
+  profilePhotoUrl?: string | null;
 
   @Prop({ type: String })
   bio?: string;

@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { HealthModule } from './health/health.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
@@ -27,6 +29,12 @@ import { InsurerModule } from './insurer/insurer.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
+    }),
+
+    // Static files serving
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
     }),
 
     // MongoDB connection

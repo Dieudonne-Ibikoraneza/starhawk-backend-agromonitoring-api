@@ -227,6 +227,31 @@ export class UsersService implements OnModuleInit {
     };
   }
 
+  async findAllInsurers(
+    page: number = 0,
+    limit: number = 10,
+    sortBy: string = 'createdAt',
+    sortDirection: 'asc' | 'desc' = 'desc',
+  ) {
+    const result = await this.usersRepository.findByRole(
+      Role.INSURER,
+      page,
+      limit,
+      sortBy,
+      sortDirection,
+    );
+
+    // Map each insurer to include their profile
+    const items = await Promise.all(
+      result.items.map((user) => this.mapToUserProfileResponse(user)),
+    );
+
+    return {
+      ...result,
+      items,
+    };
+  }
+
   async findById(id: string): Promise<UserProfileResponseDto> {
     const user = await this.usersRepository.findById(id);
     if (!user) {
@@ -356,7 +381,7 @@ export class UsersService implements OnModuleInit {
           response.assessorProfile = {
             specialization: assessorProfile.specialization,
             experienceYears: assessorProfile.experienceYears,
-            profilePhotoUrl: assessorProfile.profilePhotoUrl,
+            profilePhotoUrl: assessorProfile.profilePhotoUrl || undefined,
             bio: assessorProfile.bio,
             address: assessorProfile.address,
           };
@@ -376,7 +401,18 @@ export class UsersService implements OnModuleInit {
             companyDescription: insurerProfile.companyDescription,
             licenseNumber: insurerProfile.licenseNumber,
             registrationDate: insurerProfile.registrationDate,
-            companyLogoUrl: insurerProfile.companyLogoUrl,
+            companyLogoUrl: insurerProfile.companyLogoUrl || undefined,
+            bio: insurerProfile.bio,
+            profilePictureUrl: insurerProfile.profilePictureUrl || undefined,
+            province: insurerProfile.province,
+            district: insurerProfile.district,
+            sector: insurerProfile.sector,
+            cell: insurerProfile.cell,
+            village: insurerProfile.village,
+            officialEmail: insurerProfile.officialEmail,
+            officialPhone: insurerProfile.officialPhone,
+            specializations: insurerProfile.specializations,
+            socialMedia: insurerProfile.socialMedia,
           };
         }
         break;

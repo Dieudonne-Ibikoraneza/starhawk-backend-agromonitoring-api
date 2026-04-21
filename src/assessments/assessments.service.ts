@@ -153,11 +153,13 @@ export class AssessmentsService {
         // Convert historical_data to format expected by risk scoring
         weatherData = weatherResponse.data.map((point: any) => ({
           date: point.date,
-          rainfall: point.rainfall,
+          // Handle both 'rainfall' and 'rain' property names from different API versions
+          rainfall: point.rainfall !== undefined ? point.rainfall : (point.rain || 0),
           temperature: {
-            min: point.temperature_min,
-            max: point.temperature_max,
-            average: (point.temperature_min + point.temperature_max) / 2,
+            // Handle both 'temperature_min' and 'temp_min'
+            min: point.temp_min !== undefined ? point.temp_min : (point.temperature_min || 0),
+            max: point.temp_max !== undefined ? point.temp_max : (point.temperature_max || 0),
+            average: point.temp !== undefined ? point.temp : ((point.temp_min + point.temp_max) / 2 || 0),
           },
         }));
       } catch (error) {

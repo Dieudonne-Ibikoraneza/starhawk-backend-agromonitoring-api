@@ -29,8 +29,46 @@ export class InsurerProfile {
   @Prop({ type: Date })
   registrationDate?: Date;
 
+  @Prop({ type: String })
+  companyLogoUrl?: string | null;
+
   @Prop()
-  companyLogoUrl?: string;
+  bio?: string;
+
+  @Prop({ type: String })
+  profilePictureUrl?: string | null;
+
+  @Prop()
+  province?: string;
+
+  @Prop()
+  district?: string;
+
+  @Prop()
+  sector?: string;
+
+  @Prop()
+  cell?: string;
+
+  @Prop()
+  village?: string;
+
+  @Prop()
+  officialEmail?: string;
+
+  @Prop()
+  officialPhone?: string;
+
+  @Prop({ type: [String] })
+  specializations?: string[];
+
+  @Prop({ type: Object })
+  socialMedia?: {
+    twitter?: string;
+    linkedin?: string;
+    facebook?: string;
+    instagram?: string;
+  };
 }
 
 export const InsurerProfileSchema =

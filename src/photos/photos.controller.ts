@@ -72,6 +72,14 @@ export class PhotosController {
     return this.photosService.getPhotosByEntity(entityId, type);
   }
 
+  @Delete('entity/:entityId')
+  async clearProfilePhoto(
+    @Param('entityId') entityId: string,
+    @Query('type') type: PhotoType,
+  ) {
+    return this.photosService.clearProfilePhoto(entityId, type);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete photo' })
   @ApiResponse({ status: 200 })

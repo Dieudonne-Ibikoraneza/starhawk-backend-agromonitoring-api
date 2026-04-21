@@ -97,5 +97,64 @@ export class UpdateInsurerProfileDto {
   @IsOptional()
   @IsString()
   companyLogoUrl?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  profilePictureUrl?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  sector?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  cell?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  village?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  officialEmail?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  officialPhone?: string;
+
+  @ApiProperty({ required: false, type: [String] })
+  @IsOptional()
+  @IsString({ each: true })
+  specializations?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  socialMedia?: {
+    twitter?: string;
+    linkedin?: string;
+    facebook?: string;
+    instagram?: string;
+  };
 }
 
