@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsEnum, IsDateString } from 'class-validator';
+import { IsNotEmpty, IsEnum, IsDateString, IsOptional, IsString } from 'class-validator';
 import { CropType } from '../enums/crop-type.enum';
 
 export class CreateFarmSimpleDto {
@@ -19,6 +19,11 @@ export class CreateFarmSimpleDto {
   @IsNotEmpty()
   @IsDateString()
   sowingDate: string;
+
+  @ApiProperty({ description: 'Insurer ID chosen by the farmer', required: false })
+  @IsOptional()
+  @IsString()
+  insurerId?: string;
 }
 
 

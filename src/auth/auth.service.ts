@@ -49,5 +49,27 @@ export class AuthService {
       firstLoginRequired: user.firstLoginRequired,
     };
   }
+
+  async changePassword(userId: string, updatePasswordDto: any): Promise<void> {
+    const user = await this.usersService.findUserByIdInternal(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const isPasswordValid = await this.passwordService.comparePassword(
+      updatePasswordDto.currentPassword,
+      user.password,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+
+    const hashedPassword = await this.passwordService.hashPassword(
+      updatePasswordDto.newPassword,
+    );
+
+    await this.usersService.updatePasswordInternal(userId, hashedPassword);
+  }
 }
 
