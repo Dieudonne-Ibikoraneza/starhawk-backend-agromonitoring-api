@@ -47,6 +47,18 @@ export class FarmResponseDto {
 
   @ApiProperty({ required: false })
   eosdaFieldId?: string;
+  
+  @ApiProperty({ required: false })
+  preferredInsurerId?: string;
+
+  @ApiProperty({ required: false })
+  preferredInsurerName?: string;
+
+  @ApiProperty({ required: false })
+  insurerId?: string;
+
+  @ApiProperty({ required: false })
+  insurerName?: string;
 
   @ApiProperty()
   createdAt: Date;

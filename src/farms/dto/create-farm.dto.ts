@@ -53,5 +53,10 @@ export class CreateFarmDto {
   @IsOptional()
   @IsEnum(CropType)
   cropType?: CropType;
+
+  @ApiProperty({ description: 'Insurer ID chosen by the farmer', required: false })
+  @IsOptional()
+  @IsString()
+  insurerId?: string;
 }
 
