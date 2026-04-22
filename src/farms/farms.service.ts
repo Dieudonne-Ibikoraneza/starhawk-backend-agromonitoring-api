@@ -74,6 +74,9 @@ export class FarmsService {
       cropType: createDto.cropType,
       sowingDate,
       status: FarmStatus.PENDING,
+      insurerId: createDto.insurerId 
+        ? new Types.ObjectId(createDto.insurerId) 
+        : undefined,
       // No name, boundary, location, or eosdaFieldId yet
     };
 
@@ -302,6 +305,9 @@ export class FarmsService {
       status: FarmStatus.REGISTERED,
       eosdaFieldId, // Store EOSDA field ID for subsequent API calls
       locationName,
+      insurerId: createFarmDto.insurerId 
+        ? new Types.ObjectId(createFarmDto.insurerId) 
+        : undefined,
     };
 
     const farm = await this.farmsRepository.create(farmData);
@@ -583,7 +589,13 @@ export class FarmsService {
       }
     }
 
-    const updatedFarm = await this.farmsRepository.update(id, updateData);
+    // Convert preferredInsurerId string to ObjectId if present
+    const repoData: any = { ...updateData };
+    if (repoData.insurerId && typeof repoData.insurerId === 'string') {
+      repoData.insurerId = new Types.ObjectId(repoData.insurerId);
+    }
+
+    const updatedFarm = await this.farmsRepository.update(id, repoData);
 
     // If boundary was updated and EOSDA field exists, update it in EOSDA
     if (updateData.boundary && updatedFarm?.eosdaFieldId) {
@@ -747,6 +759,26 @@ export class FarmsService {
       farmerIdValue = farm.farmerId?.toString() || '';
     }
 
+    // Handle insurerId
+    let insurerId: string | undefined;
+    let insurerName: string | undefined;
+
+    if (farm.insurerId) {
+      if (typeof farm.insurerId === 'object' && farm.insurerId._id) {
+        insurerId = farm.insurerId._id.toString();
+        const profile = farm.insurerId.insurerProfile;
+        if (profile && profile.companyName) {
+          insurerName = profile.companyName;
+        } else {
+          const firstName = farm.insurerId.firstName || '';
+          const lastName = farm.insurerId.lastName || '';
+          insurerName = `${firstName} ${lastName}`.trim() || undefined;
+        }
+      } else {
+        insurerId = farm.insurerId.toString();
+      }
+    }
+
     const response = {
       id: farm._id.toString(),
       farmerId: farmerIdValue,
@@ -759,6 +791,10 @@ export class FarmsService {
       locationName: farm.locationName,
       boundary: farm.boundary,
       status: farm.status,
+      preferredInsurerId: insurerId, // Keeping this for backward compatibility if needed, but mapped from insurerId
+      preferredInsurerName: insurerName,
+      insurerId,
+      insurerName,
       shapefilePath: farm.shapefilePath,
       eosdaFieldId: farm.eosdaFieldId, // EOSDA field ID for subsequent API calls
       createdAt: farm.createdAt,

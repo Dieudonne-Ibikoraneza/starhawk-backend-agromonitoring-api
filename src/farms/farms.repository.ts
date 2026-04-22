@@ -14,7 +14,7 @@ export class FarmsRepository {
   }
 
   async findById(id: string): Promise<FarmDocument | null> {
-    return this.farmModel.findById(id).populate('farmerId').exec();
+    return this.farmModel.findById(id).populate('farmerId').populate('preferredInsurerId').populate('insurerId').exec();
   }
 
   async findByFarmerId(farmerId: string): Promise<FarmDocument[]> {
@@ -42,7 +42,7 @@ export class FarmsRepository {
     const query = this.farmModel.find(filters || {});
 
     const [items, totalItems] = await Promise.all([
-      query.skip(skip).limit(limit).populate('farmerId').exec(),
+      query.skip(skip).limit(limit).populate('farmerId').populate('preferredInsurerId').populate('insurerId').exec(),
       this.farmModel.countDocuments(filters || {}).exec(),
     ]);
 
@@ -68,6 +68,8 @@ export class FarmsRepository {
     return this.farmModel
       .find({ status })
       .populate('farmerId')
+      .populate('preferredInsurerId')
+      .populate('insurerId')
       .exec();
   }
 }
