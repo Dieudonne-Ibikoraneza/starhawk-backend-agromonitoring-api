@@ -429,6 +429,8 @@ export class AssessmentsService {
           sowingDate: farm.sowingDate,
           name: farm.name,
           farmer: farmerResponse,
+          insurerId: farm.insurerId ? (farm.insurerId as any)._id?.toString() || farm.insurerId.toString() : undefined,
+          insurerName: farm.insurerId ? (farm.insurerId as any).insurerProfile?.companyName || `${(farm.insurerId as any).firstName} ${(farm.insurerId as any).lastName}`.trim() : undefined,
           createdAt: farmDoc.createdAt,
           updatedAt: farmDoc.updatedAt,
         };
@@ -459,6 +461,16 @@ export class AssessmentsService {
       throw new BadRequestException('User is not an assessor');
     }
 
+    // Enforce Insurer Logic
+    let finalInsurerId: Types.ObjectId | undefined;
+    if (farm.insurerId) {
+      finalInsurerId = farm.insurerId instanceof Types.ObjectId ? farm.insurerId : (farm.insurerId as any)._id;
+    } else if (insurerId) {
+      finalInsurerId = new Types.ObjectId(insurerId);
+    } else {
+      throw new BadRequestException('An insurer must be assigned to the assessment');
+    }
+
     // Check if assessment already exists for this farm
     const existing = await this.assessmentsRepository.findByFarmId(farmId);
     if (existing) {
@@ -470,12 +482,8 @@ export class AssessmentsService {
       farmId: new Types.ObjectId(farmId),
       assessorId: new Types.ObjectId(assessorId),
       status: AssessmentStatus.ASSIGNED,
+      insurerId: finalInsurerId,
     };
-
-    // Add insurerId if provided
-    if (insurerId) {
-      assessmentData.insurerId = new Types.ObjectId(insurerId);
-    }
 
     const assessment = await this.assessmentsRepository.create(assessmentData);
 
