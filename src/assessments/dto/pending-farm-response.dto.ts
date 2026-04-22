@@ -23,5 +23,11 @@ export class PendingFarmResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiProperty({ required: false })
+  preferredInsurerId?: string;
+
+  @ApiProperty({ required: false })
+  preferredInsurerName?: string;
 }
 
