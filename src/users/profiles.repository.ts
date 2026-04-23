@@ -102,5 +102,18 @@ export class ProfilesRepository {
       .findOneAndUpdate({ userId }, updateData, { new: true })
       .exec();
   }
+
+  // Deletion
+  async deleteFarmerProfile(userId: string): Promise<void> {
+    await this.farmerProfileModel.deleteOne({ userId }).exec();
+  }
+
+  async deleteAssessorProfile(userId: string): Promise<void> {
+    await this.assessorProfileModel.deleteOne({ userId }).exec();
+  }
+
+  async deleteInsurerProfile(userId: string): Promise<void> {
+    await this.insurerProfileModel.deleteOne({ userId }).exec();
+  }
 }
 

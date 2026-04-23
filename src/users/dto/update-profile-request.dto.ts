@@ -6,6 +6,16 @@ export class UpdateFarmerProfileDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   farmProvince?: string;
 
   @ApiProperty({ required: false })
@@ -33,6 +43,16 @@ export class UpdateAssessorProfileDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   specialization?: string;
 
   @ApiProperty({ required: false })
@@ -57,6 +77,16 @@ export class UpdateAssessorProfileDto {
 }
 
 export class UpdateInsurerProfileDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
