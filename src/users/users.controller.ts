@@ -123,25 +123,11 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
-  @Put(':id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Update user (Admin only)' })
-  @ApiResponse({ status: 200, type: UserProfileResponseDto })
-  async update(
-    @Param('id', UuidValidationPipe) id: string,
-    @Body() updateDto: UpdateUserRequestDto,
-  ): Promise<UserProfileResponseDto> {
-    return this.usersService.update(id, updateDto);
-  }
-
-  @Put(':id/deactivate')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Deactivate user (Admin only)' })
+  @Post('profile/request-deactivation')
+  @ApiOperation({ summary: 'Request account deactivation' })
   @ApiResponse({ status: 200 })
-  async deactivate(@Param('id', UuidValidationPipe) id: string) {
-    return this.usersService.deactivate(id);
+  async requestDeactivation(@CurrentUser() user: any) {
+    return this.usersService.requestDeactivation(user.userId);
   }
 
   @Put('profile')
@@ -160,6 +146,45 @@ export class UsersController {
       user.role,
       profileData,
     );
+  }
+
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Update user (Admin only)' })
+  @ApiResponse({ status: 200, type: UserProfileResponseDto })
+  async update(
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() updateDto: UpdateUserRequestDto,
+  ): Promise<UserProfileResponseDto> {
+    return this.usersService.update(id, updateDto);
+  }
+
+  @Get('insurers/:id/public')
+  @ApiOperation({ summary: 'Get public profile of an insurer' })
+  @ApiResponse({ status: 200 })
+  async getInsurerPublicProfile(
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.usersService.getInsurerPublicProfile(id);
+  }
+
+  @Get('assessors/:id/profile')
+  @ApiOperation({ summary: 'Get detailed profile of an assessor' })
+  @ApiResponse({ status: 200 })
+  async getAssessorProfile(
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.usersService.getAssessorProfile(id);
+  }
+
+  @Put(':id/deactivate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Deactivate user (Admin only)' })
+  @ApiResponse({ status: 200 })
+  async deactivate(@Param('id', UuidValidationPipe) id: string) {
+    return this.usersService.deactivate(id);
   }
 }
 

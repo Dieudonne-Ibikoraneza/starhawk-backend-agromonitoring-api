@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { UserStatus } from '../enums/user-status.enum';
 import { Role } from '../enums/role.enum';
 
 export type UserDocument = User & Document;
@@ -33,6 +34,9 @@ export class User {
   @Prop({ default: true })
   active: boolean;
 
+  @Prop({ type: String, enum: UserStatus, default: UserStatus.ACTIVE })
+  status: UserStatus;
+
   @Prop({ default: true })
   firstLoginRequired: boolean;
 
@@ -61,4 +65,5 @@ export const UserSchema = SchemaFactory.createForClass(User);
 // Indexes
 UserSchema.index({ role: 1 });
 UserSchema.index({ active: 1 });
+UserSchema.index({ status: 1 });
 
