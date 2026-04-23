@@ -17,6 +17,7 @@ import {
 import { AuthModule } from '../auth/auth.module';
 import { NidaModule } from '../nida/nida.module';
 import { EmailModule } from '../email/email.module';
+import { PhotosModule } from '../photos/photos.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { EmailModule } from '../email/email.module';
       { name: InsurerProfile.name, schema: InsurerProfileSchema },
     ]),
     forwardRef(() => AuthModule),
+    forwardRef(() => PhotosModule),
     NidaModule,
     EmailModule,
   ],

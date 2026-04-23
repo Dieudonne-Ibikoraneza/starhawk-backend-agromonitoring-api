@@ -69,6 +69,10 @@ export class UsersRepository {
       .exec();
   }
 
+  async hardDelete(id: string): Promise<void> {
+    await this.userModel.findByIdAndDelete(id).exec();
+  }
+
   async findByRole(
     role: Role,
     page: number = 0,
