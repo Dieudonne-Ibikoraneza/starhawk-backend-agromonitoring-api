@@ -3,6 +3,8 @@ import {
   OnModuleInit,
   ConflictException,
   NotFoundException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersRepository } from './users.repository';
@@ -14,7 +16,9 @@ import { RegisterRequestDto } from './dto/register-request.dto';
 import { UpdateUserRequestDto } from './dto/update-user-request.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { Role } from './enums/role.enum';
+import { UserStatus } from './enums/user-status.enum';
 import { UserDocument } from './schemas/user.schema';
+import { PhotosService } from '../photos/photos.service';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -25,6 +29,8 @@ export class UsersService implements OnModuleInit {
     private nidaService: NidaService,
     private emailService: EmailService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => PhotosService))
+    private photosService: PhotosService,
   ) {}
 
   async onModuleInit() {
@@ -147,7 +153,7 @@ export class UsersService implements OnModuleInit {
       lastName: nidaData.surnames,
       role: registerDto.role,
       active: true,
-      firstLoginRequired: true,
+      firstLoginRequired: registerDto.role === Role.INSURER,
       province: nidaData.province,
       district: nidaData.district,
       sector: nidaData.sector,
@@ -264,6 +270,14 @@ export class UsersService implements OnModuleInit {
     return this.usersRepository.findByPhoneNumber(phoneNumber);
   }
 
+  async findUserByIdInternal(id: string): Promise<UserDocument | null> {
+    return this.usersRepository.findById(id);
+  }
+
+  async updatePasswordInternal(id: string, password: string): Promise<void> {
+    await this.usersRepository.update(id, { password } as any);
+  }
+
   async update(id: string, updateDto: UpdateUserRequestDto) {
     const user = await this.usersRepository.findById(id);
     if (!user) {
@@ -316,6 +330,15 @@ export class UsersService implements OnModuleInit {
       throw new NotFoundException('User', userId);
     }
 
+    // Update base user fields if provided
+    const userUpdate: any = {};
+    if (profileData.email) userUpdate.email = profileData.email;
+    if (profileData.phoneNumber) userUpdate.phoneNumber = profileData.phoneNumber;
+
+    if (Object.keys(userUpdate).length > 0) {
+      await this.usersRepository.update(userId, userUpdate);
+    }
+
     switch (role) {
       case Role.FARMER:
         await this.profilesRepository.updateFarmerProfile(userId, profileData);
@@ -326,6 +349,11 @@ export class UsersService implements OnModuleInit {
       case Role.INSURER:
         await this.profilesRepository.updateInsurerProfile(userId, profileData);
         break;
+    }
+
+    // Clear first login flag after first profile update
+    if (user.firstLoginRequired) {
+      await this.usersRepository.update(userId, { firstLoginRequired: false });
     }
 
     return this.getProfile(userId);
@@ -419,6 +447,101 @@ export class UsersService implements OnModuleInit {
     }
 
     return response;
+  }
+
+  async requestDeactivation(userId: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.usersRepository.update(userId, {
+      status: UserStatus.DEACTIVATION_REQUESTED,
+      active: false,
+    });
+  }
+
+  async permanentlyDeleteUser(userId: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    // 1. Delete all photos from Supabase and database
+    await this.photosService.deleteAllEntityPhotos(userId);
+
+    // 2. Delete role-specific profile
+    switch (user.role) {
+      case Role.FARMER:
+        await this.profilesRepository.deleteFarmerProfile(userId);
+        break;
+      case Role.ASSESSOR:
+        await this.profilesRepository.deleteAssessorProfile(userId);
+        break;
+      case Role.INSURER:
+        await this.profilesRepository.deleteInsurerProfile(userId);
+        break;
+      case Role.GOVERNMENT:
+        // No specific profile for government yet, but included for completeness
+        break;
+    }
+
+    // 3. Delete user record
+    await this.usersRepository.hardDelete(userId);
+  }
+
+  async getInsurerPublicProfile(id: string) {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.role !== Role.INSURER) {
+      throw new NotFoundException('Insurer not found');
+    }
+
+    const profile = await this.profilesRepository.findInsurerProfileByUserId(id);
+    return {
+      id: (user as any)._id.toString(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      province: user.province,
+      district: user.district,
+      companyName: profile?.companyName,
+      companyLogoUrl: profile?.companyLogoUrl,
+      bio: profile?.bio,
+      website: profile?.website,
+      officialEmail: profile?.officialEmail,
+      officialPhone: profile?.officialPhone,
+      socialMedia: profile?.socialMedia,
+    };
+  }
+
+  async getAssessorProfile(id: string) {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.role !== Role.ASSESSOR) {
+      throw new NotFoundException('Assessor not found');
+    }
+
+    const profile = await this.profilesRepository.findAssessorProfileByUserId(id);
+    return {
+      id: (user as any)._id.toString(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      province: user.province,
+      district: user.district,
+      specialization: profile?.specialization,
+      experienceYears: profile?.experienceYears,
+      profilePhotoUrl: profile?.profilePhotoUrl,
+      bio: profile?.bio,
+      address: profile?.address,
+    };
+  }
+
+  async restoreUser(userId: string): Promise<void> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.usersRepository.update(userId, {
+      status: UserStatus.ACTIVE,
+      active: true,
+    });
   }
 }
 
