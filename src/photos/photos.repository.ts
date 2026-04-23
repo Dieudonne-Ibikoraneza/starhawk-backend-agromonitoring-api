@@ -26,6 +26,10 @@ export class PhotosRepository {
     return this.photoModel.find({ entityId, type }).exec();
   }
 
+  async findByEntityOnly(entityId: string): Promise<PhotoDocument[]> {
+    return this.photoModel.find({ entityId }).exec();
+  }
+
   async delete(id: string): Promise<void> {
     await this.photoModel.findByIdAndDelete(id).exec();
   }

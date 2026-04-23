@@ -201,6 +201,18 @@ export class PhotosService {
   }
 
   /**
+   * Delete all photos associated with an entity (used for account deletion)
+   */
+  async deleteAllEntityPhotos(entityId: string): Promise<void> {
+    // Find all photos for this entity (across all types)
+    // We'll need a new repository method or a more general search
+    const photos = await this.photosRepository.findByEntityOnly(entityId);
+    for (const photo of photos) {
+      await this.deleteFromStorage(photo);
+    }
+  }
+
+  /**
    * Internal helper to delete a photo from both Supabase and MongoDB
    */
   private async deleteFromStorage(photo: PhotoDocument): Promise<void> {
