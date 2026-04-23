@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PhotosController } from './photos.controller';
 import { PhotosService } from './photos.service';
@@ -10,7 +10,7 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Photo.name, schema: PhotoSchema }]),
-    UsersModule,
+    forwardRef(() => UsersModule),
   ],
   controllers: [PhotosController],
   providers: [PhotosService, PhotosRepository],

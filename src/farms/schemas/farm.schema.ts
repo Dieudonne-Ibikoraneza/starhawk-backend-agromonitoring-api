@@ -10,6 +10,12 @@ export class Farm {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   farmerId: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  preferredInsurerId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  insurerId?: Types.ObjectId;
+
   @Prop()
   name?: string; // Provided by assessor when uploading KML
 
