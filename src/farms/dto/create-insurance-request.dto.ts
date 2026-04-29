@@ -18,5 +18,14 @@ export class CreateInsuranceRequestDto {
   @IsOptional()
   @IsString({ message: 'Notes must be a string' })
   notes?: string;
+
+  @ApiProperty({ 
+    required: false, 
+    description: 'Insurer ID',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @IsOptional()
+  @IsString({ message: 'Insurer ID must be a string' })
+  insurerId?: string;
 }
 
