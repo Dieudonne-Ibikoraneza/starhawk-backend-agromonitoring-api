@@ -146,7 +146,12 @@ export class FarmsController {
     @CurrentUser() user: any,
     @Body() createDto: CreateInsuranceRequestDto,
   ) {
-    return this.farmsService.createInsuranceRequest(user.userId, createDto.farmId, createDto.notes);
+    return this.farmsService.createInsuranceRequest(
+      user.userId,
+      createDto.farmId,
+      createDto.notes,
+      createDto.insurerId,
+    );
   }
 
   // Farm Analytics Endpoints - Must come before :id route
