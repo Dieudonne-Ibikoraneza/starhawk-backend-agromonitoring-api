@@ -620,7 +620,7 @@ export class FarmsService {
     return this.mapToFarmResponse(updatedFarm!);
   }
 
-  async createInsuranceRequest(farmerId: string, farmId: string, notes?: string) {
+  async createInsuranceRequest(farmerId: string, farmId: string, notes?: string, insurerId?: string) {
     // Validate farmId is provided
     if (!farmId || farmId.trim() === '') {
       throw new BadRequestException('Farm ID is required');
@@ -677,6 +677,7 @@ export class FarmsService {
       farmId: new Types.ObjectId(farmId),
       status: InsuranceRequestStatus.PENDING,
       notes,
+      insurerId: insurerId ? new Types.ObjectId(insurerId) : undefined,
     });
 
     return request;
