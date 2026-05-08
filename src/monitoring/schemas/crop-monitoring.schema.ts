@@ -37,6 +37,9 @@ export class CropMonitoring {
   @Prop({ type: String })
   notes?: string;
 
+  @Prop({ type: [String], default: [] })
+  photoUrls?: string[];
+
   @Prop({ type: Boolean, default: false })
   reportGenerated: boolean;
 

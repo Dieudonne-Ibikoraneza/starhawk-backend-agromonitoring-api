@@ -134,6 +134,7 @@ export class CropMonitoringService {
       observations?: string[];
       notes?: string;
       ndviData?: object;
+      photoUrls?: string[];
     },
   ): Promise<any> {
     // Validate monitoring exists and belongs to assessor

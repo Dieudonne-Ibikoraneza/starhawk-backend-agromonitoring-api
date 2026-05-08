@@ -76,6 +76,7 @@ export class CropMonitoringController {
       observations?: string[];
       notes?: string;
       ndviData?: object;
+      photoUrls?: string[];
     },
   ) {
     return this.cropMonitoringService.updateMonitoring(user.userId, id, updateData);
