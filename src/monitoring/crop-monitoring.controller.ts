@@ -186,8 +186,8 @@ export class CropMonitoringController {
 
   @Get(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Get one monitoring cycle by id (Admin only)' })
+  @Roles(Role.ADMIN, Role.INSURER, Role.ASSESSOR)
+  @ApiOperation({ summary: 'Get one monitoring cycle by id' })
   @ApiResponse({ status: 200 })
   async getMonitoringByIdAdmin(@Param('id', UuidValidationPipe) id: string) {
     return this.cropMonitoringService.getMonitoringByIdForAdmin(id);

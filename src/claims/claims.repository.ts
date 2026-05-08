@@ -38,6 +38,7 @@ export class ClaimsRepository {
       })
       .populate('policyId')
       .populate('farmId')
+      .populate('assessmentReportId')
       .exec();
   }
 
@@ -70,7 +71,9 @@ export class ClaimsRepository {
         ],
       })
       .populate('policyId')
+      .populate('farmerId')
       .populate('farmId')
+      .populate('assessmentReportId')
       .exec();
   }
 

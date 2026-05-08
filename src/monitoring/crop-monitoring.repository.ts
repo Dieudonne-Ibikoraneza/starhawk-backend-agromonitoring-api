@@ -19,7 +19,10 @@ export class CropMonitoringRepository {
   async findById(id: string): Promise<CropMonitoringDocument | null> {
     return this.cropMonitoringModel
       .findById(id)
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .exec();
@@ -28,7 +31,10 @@ export class CropMonitoringRepository {
   async findByPolicyId(policyId: string): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find({ policyId: new Types.ObjectId(policyId) })
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .sort({ monitoringNumber: 1 })
@@ -38,7 +44,10 @@ export class CropMonitoringRepository {
   async findByAssessorId(assessorId: string): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find({ assessorId: new Types.ObjectId(assessorId) })
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .sort({ createdAt: -1 })
@@ -65,7 +74,10 @@ export class CropMonitoringRepository {
   ): Promise<CropMonitoringDocument | null> {
     return this.cropMonitoringModel
       .findByIdAndUpdate(id, updateData, { new: true })
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .exec();
@@ -74,7 +86,10 @@ export class CropMonitoringRepository {
   async findAll(): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find()
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .sort({ createdAt: -1 })
@@ -84,7 +99,10 @@ export class CropMonitoringRepository {
   async findByPolicyIds(policyIds: Types.ObjectId[]): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find({ policyId: { $in: policyIds } })
-      .populate('policyId')
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
       .populate('farmId')
       .populate('assessorId')
       .sort({ createdAt: -1 })

@@ -172,7 +172,17 @@ export class FieldAnalyticsService extends AgromonitoringBaseService {
       }
       return Math.floor(ms / 1000);
     };
-    return { startSec: parseOne(start, 'start'), endSec: parseOne(end, 'end') };
+
+    const startSec = parseOne(start, 'start');
+    let endSec = parseOne(end, 'end');
+
+    // AGROmonitoring restriction: 'end' cannot be in the future (after 'now')
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (endSec > nowSec) {
+      endSec = nowSec;
+    }
+
+    return { startSec, endSec };
   }
 
   private extractNdviHistoryArray(raw: unknown): unknown[] {
