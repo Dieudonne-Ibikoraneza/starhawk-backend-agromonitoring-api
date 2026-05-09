@@ -75,8 +75,10 @@ export class ClaimsService {
       farmId: policy.farmId as Types.ObjectId,
       lossEventType: createDto.lossEventType,
       claimType: ClaimType.FARMER_REPORTED_LOSS,
-      lossDescription: createDto.lossDescription,
+      lossDescription: createDto.lossDescription || createDto.description,
       damagePhotos: createDto.damagePhotos,
+      lossEventDate: createDto.lossEventDate || createDto.eventDate ? new Date(createDto.lossEventDate || createDto.eventDate!) : undefined,
+      estimatedLoss: typeof createDto.estimatedLoss !== 'undefined' && createDto.estimatedLoss !== null ? parseFloat(createDto.estimatedLoss) : undefined,
       status: ClaimStatus.FILED,
       assessorId: resolvedAssessorId ? new Types.ObjectId(resolvedAssessorId) : undefined,
     });

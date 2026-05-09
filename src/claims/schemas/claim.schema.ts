@@ -32,6 +32,12 @@ export class Claim {
   @Prop({ type: [String] })
   damagePhotos?: string[];
 
+  @Prop({ type: Date })
+  lossEventDate?: Date;
+
+  @Prop({ type: Number })
+  estimatedLoss?: number;
+
   @Prop({ type: Date, default: Date.now })
   filedAt: Date;
 

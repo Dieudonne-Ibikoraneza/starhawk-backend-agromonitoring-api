@@ -19,11 +19,30 @@ export class CreateClaimDto {
   @IsString()
   lossDescription?: string;
 
+  @ApiProperty({ required: false, description: 'Loss description (alias)' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
   @ApiProperty({ required: false, type: [String], description: 'Photo URLs' })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   damagePhotos?: string[];
+
+  @ApiProperty({ required: false, description: 'Loss event date' })
+  @IsOptional()
+  @IsString()
+  lossEventDate?: string;
+
+  @ApiProperty({ required: false, description: 'Loss event date (alias)' })
+  @IsOptional()
+  @IsString()
+  eventDate?: string;
+
+  @ApiProperty({ required: false, description: 'Estimated loss amount' })
+  @IsOptional()
+  estimatedLoss?: any;
 
   @ApiProperty({
     required: false,
