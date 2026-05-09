@@ -16,6 +16,7 @@ import { EmailModule } from '../email/email.module';
 import { UsersModule } from '../users/users.module';
 import { AssessmentsModule } from '../assessments/assessments.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { PhotosModule } from '../photos/photos.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module';
     UsersModule,
     AssessmentsModule,
     MonitoringModule,
+    PhotosModule,
   ],
   controllers: [ClaimsController],
   providers: [

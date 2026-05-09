@@ -114,6 +114,69 @@ export class PhotosService {
     };
   }
 
+  async uploadBase64Photo(
+    base64String: string,
+    type: PhotoType,
+    entityId: string,
+  ): Promise<{ id: string; url: string }> {
+    if (!base64String) {
+      throw new BadRequestException('Empty base64 image data');
+    }
+
+    let mimeType = 'image/jpeg';
+    let base64Data = base64String;
+
+    if (base64String.startsWith('data:')) {
+      const match = base64String.match(/^data:([^;]+);base64,(.*)$/);
+      if (match) {
+        mimeType = match[1];
+        base64Data = match[2];
+      }
+    }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    const extension = mimeType.split('/')[1] || 'jpg';
+    
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 9);
+    const filename = `${type.toLowerCase()}/${entityId}-${timestamp}-${randomStr}.${extension}`;
+
+    // Upload to Supabase
+    const { error } = await this.supabase.storage
+      .from(this.bucket)
+      .upload(filename, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (error) {
+      throw new BadRequestException(`Supabase upload failed: ${error.message}`);
+    }
+
+    // Get public URL
+    const { data: publicUrlData } = this.supabase.storage
+      .from(this.bucket)
+      .getPublicUrl(filename);
+
+    const url = publicUrlData.publicUrl;
+
+    // Save photo record
+    const photo = await this.photosRepository.create({
+      url,
+      type,
+      entityId,
+      originalFileName: `${type.toLowerCase()}-${entityId}.${extension}`,
+      mimeType,
+      size: buffer.length,
+    });
+
+    return {
+      id: (photo._id as any).toString(),
+      url,
+    };
+  }
+
   /**
    * Clear a profile photo or logo and reset the field in the database
    */

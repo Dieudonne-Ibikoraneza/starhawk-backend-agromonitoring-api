@@ -9,10 +9,15 @@ export class CreateClaimDto {
   @IsString()
   policyId: string;
 
-  @ApiProperty({ enum: LossEventType })
-  @IsNotEmpty()
+  @ApiProperty({ enum: LossEventType, required: false })
+  @IsOptional()
   @IsEnum(LossEventType)
-  lossEventType: LossEventType;
+  lossEventType?: LossEventType;
+
+  @ApiProperty({ enum: LossEventType, required: false, description: 'Loss event type (alias)' })
+  @IsOptional()
+  @IsEnum(LossEventType)
+  eventType?: LossEventType;
 
   @ApiProperty({ required: false, description: 'Loss description' })
   @IsOptional()

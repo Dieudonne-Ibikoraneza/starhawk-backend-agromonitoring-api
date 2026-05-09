@@ -25,6 +25,8 @@ import { PayoutStatus } from './schemas/payout.schema';
 import { DroneAnalysisService } from '../assessments/services/drone-analysis.service';
 import { PdfType } from '../assessments/dto/upload-drone-analysis.dto';
 import { getCropHarvestDurationMonths } from '../farms/constants/crop-harvest-duration.constants';
+import { PhotosService } from '../photos/photos.service';
+import { PhotoType } from '../photos/enums/photo-type.enum';
 
 @Injectable()
 export class ClaimsService {
@@ -42,6 +44,7 @@ export class ClaimsService {
     private droneAnalysisService: DroneAnalysisService,
     private assessmentsRepository: AssessmentsRepository,
     private cropMonitoringService: CropMonitoringService,
+    private photosService: PhotosService,
   ) {}
 
   async fileClaim(farmerId: string, createDto: CreateClaimDto) {
@@ -50,6 +53,11 @@ export class ClaimsService {
       createDto.claimType !== ClaimType.FARMER_REPORTED_LOSS
     ) {
       throw new BadRequestException('Farmers can only submit FARMER_REPORTED_LOSS claims');
+    }
+
+    const resolvedLossEventType = createDto.lossEventType || (createDto as any).eventType;
+    if (!resolvedLossEventType) {
+      throw new BadRequestException('lossEventType should not be empty');
     }
 
     // Verify policy belongs to farmer
@@ -67,16 +75,42 @@ export class ClaimsService {
       throw new BadRequestException('Policy is not active');
     }
 
+    // Process damage photos: upload base64 images to Supabase Storage
+    const uploadedPhotos: string[] = [];
+    if (createDto.damagePhotos && createDto.damagePhotos.length > 0) {
+      this.logger.log(`Processing ${createDto.damagePhotos.length} damage photos for claim...`);
+      for (const photo of createDto.damagePhotos) {
+        if (photo.startsWith('data:') || photo.length > 1000) {
+          try {
+            const uploadResult = await this.photosService.uploadBase64Photo(
+              photo,
+              PhotoType.CLAIM,
+              farmerId,
+            );
+            uploadedPhotos.push(uploadResult.url);
+            this.logger.log(`Successfully uploaded damage photo to Supabase: ${uploadResult.url}`);
+          } catch (uploadError: any) {
+            this.logger.error(`Failed to upload damage photo to Supabase: ${uploadError.message}`);
+            if (photo.startsWith('http://') || photo.startsWith('https://')) {
+              uploadedPhotos.push(photo);
+            }
+          }
+        } else {
+          uploadedPhotos.push(photo);
+        }
+      }
+    }
+
     const resolvedAssessorId = await this.resolveAssessorForPolicy(policy);
 
     const claim = await this.claimsRepository.create({
       policyId: new Types.ObjectId(createDto.policyId),
       farmerId: new Types.ObjectId(farmerId),
       farmId: policy.farmId as Types.ObjectId,
-      lossEventType: createDto.lossEventType,
+      lossEventType: resolvedLossEventType,
       claimType: ClaimType.FARMER_REPORTED_LOSS,
       lossDescription: createDto.lossDescription || createDto.description,
-      damagePhotos: createDto.damagePhotos,
+      damagePhotos: uploadedPhotos,
       lossEventDate: createDto.lossEventDate || createDto.eventDate ? new Date(createDto.lossEventDate || createDto.eventDate!) : undefined,
       estimatedLoss: typeof createDto.estimatedLoss !== 'undefined' && createDto.estimatedLoss !== null ? parseFloat(createDto.estimatedLoss) : undefined,
       status: ClaimStatus.FILED,
@@ -110,7 +144,7 @@ export class ClaimsService {
             farmer.email,
             farmer.firstName,
             claimDoc._id.toString(),
-            createDto.lossEventType,
+            resolvedLossEventType,
             eventDate,
           )
           .catch((error) => {
