@@ -1,6 +1,10 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+// Heartbeat: 2026-05-14T09:25:35
+import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { AiInsight, AiInsightDocument } from './schemas/ai-insight.schema';
 
 @Injectable()
 export class AiInsightsService {
@@ -8,7 +12,10 @@ export class AiInsightsService {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @InjectModel(AiInsight.name) private aiInsightModel: Model<AiInsightDocument>
+  ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       this.logger.warn('GEMINI_API_KEY is not set in environment variables. AI insights will not work.');
@@ -27,39 +34,53 @@ export class AiInsightsService {
   /**
    * Generates actionable suggestions for farmers based on farm data
    */
-  async getFarmerSuggestions(farmData: any, weatherData: any, ndviData: any): Promise<string> {
+  async getFarmerSuggestions(farmData: any, weatherData: any, ndviData: any): Promise<any> {
+    const farmId = farmData._id || farmData.id;
+    if (!farmId) throw new InternalServerErrorException('Farm ID is required for persistence.');
+
+    // Check for existing insight
+    const existing = await this.aiInsightModel.findOne({ 
+      contextId: new Types.ObjectId(farmId), 
+      role: 'FARMER', 
+      type: 'SUGGESTIONS' 
+    });
+    
+    if (existing) return existing;
+
     if (!this.model) {
-      throw new InternalServerErrorException('AI Model is not configured or API key is missing.');
+      throw new InternalServerErrorException('AI Model is not configured.');
     }
 
     const prompt = `
       You are an expert agricultural AI assistant named Starhawk AI.
       Analyze the following data for a farmer's field and provide exactly 3 short, highly actionable suggestions.
       
-      Farm Details:
-      ${JSON.stringify(farmData, null, 2)}
-      
-      Recent Weather Forecast:
-      ${JSON.stringify(weatherData, null, 2)}
-      
-      Satellite Vegetation Index (NDVI) Data:
-      ${JSON.stringify(ndviData, null, 2)}
+      Farm Details: ${JSON.stringify(farmData)}
+      Weather: ${JSON.stringify(weatherData)}
+      NDVI: ${JSON.stringify(ndviData)}
       
       Guidelines:
       1. Provide exactly 3 bullet points.
-      2. Keep each point under 2 sentences.
-      3. Focus on practical farming advice (e.g., watering, harvesting, pest control, fertilizer).
-      4. Use a professional, encouraging, and easy-to-understand tone.
+      2. Focus on practical farming advice.
+      3. Format response as a single string of 3 bullet points.
     `;
 
     try {
-      this.logger.debug('Generating farmer suggestions...');
       const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const content = (await result.response).text();
+      
+      // Persist
+      return await this.aiInsightModel.create({
+        role: 'FARMER',
+        type: 'SUGGESTIONS',
+        contextId: new Types.ObjectId(farmId),
+        contextModel: 'Farm',
+        data: content,
+        conversation: [{ role: 'model', content }]
+      });
     } catch (error) {
       this.logger.error('Error generating AI farmer insight:', error);
-      throw new InternalServerErrorException('Failed to generate insights from AI.');
+      throw new InternalServerErrorException('Failed to generate insights.');
     }
   }
   
@@ -67,51 +88,85 @@ export class AiInsightsService {
    * Generates a risk analysis summary for assessors/insurers based on claims
    */
   async getRiskAnalysis(claimData: any, farmData: any, satelliteData: any): Promise<any> {
+    const claimId = claimData._id || claimData.id;
+    if (!claimId) throw new InternalServerErrorException('Claim ID is required.');
+
+    const existing = await this.aiInsightModel.findOne({ 
+      contextId: new Types.ObjectId(claimId), 
+      type: 'RISK_ANALYSIS' 
+    });
+    
+    if (existing) return existing;
+
     if (!this.model) {
-      throw new InternalServerErrorException('AI Model is not configured or API key is missing.');
+      throw new InternalServerErrorException('AI Model is not configured.');
     }
 
     const prompt = `
       You are an expert agricultural insurance risk assessor AI.
-      Analyze this insurance claim against the farm data and satellite data to determine if the claim is valid or if there are red flags for fraud.
+      Analyze this insurance claim against the farm data and satellite data.
       
-      Claim Data:
-      ${JSON.stringify(claimData, null, 2)}
+      Claim Data: ${JSON.stringify(claimData)}
+      Farm Data: ${JSON.stringify(farmData)}
+      Satellite/Weather: ${JSON.stringify(satelliteData)}
       
-      Farm Data:
-      ${JSON.stringify(farmData, null, 2)}
-      
-      Satellite & Weather Data around the time of loss:
-      ${JSON.stringify(satelliteData, null, 2)}
-      
-      Please format your response strictly as a valid JSON object matching this schema:
+      Return STRICTLY JSON:
       {
         "riskLevel": "Low" | "Medium" | "High",
-        "confidenceScore": <number between 0 and 100>,
-        "analysisSummary": "<A 3-4 sentence paragraph explaining the reasoning>",
-        "redFlags": ["<list of any suspicious details or inconsistencies>"]
+        "confidenceScore": number,
+        "analysisSummary": "string",
+        "redFlags": ["string"]
       }
-      
-      Respond with ONLY the JSON object, without any markdown formatting blocks like \`\`\`json.
     `;
 
     try {
-      this.logger.debug('Generating risk analysis...');
       const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
-      
-      // Clean up markdown if the AI includes it despite instructions
-      if (text.startsWith('\`\`\`json')) {
-        text = text.replace(/^\`\`\`json/g, '').replace(/\`\`\`$/g, '').trim();
-      } else if (text.startsWith('\`\`\`')) {
-        text = text.replace(/^\`\`\`/g, '').replace(/\`\`\`$/g, '').trim();
-      }
+      let text = (await result.response).text().trim();
+      if (text.startsWith('```json')) text = text.replace(/^```json/g, '').replace(/```$/g, '').trim();
+      const parsedData = JSON.parse(text);
 
-      return JSON.parse(text);
+      return await this.aiInsightModel.create({
+        role: claimData.status === 'PENDING' ? 'ASSESSOR' : 'INSURER',
+        type: 'RISK_ANALYSIS',
+        contextId: new Types.ObjectId(claimId),
+        contextModel: 'Claim',
+        data: parsedData,
+        conversation: [{ 
+          role: 'model', 
+          content: `Risk Level: **${parsedData.riskLevel}**\n\n${parsedData.analysisSummary}${parsedData.redFlags && parsedData.redFlags.length > 0 ? '\n\n**Potential Red Flags:**\n' + parsedData.redFlags.map((f: string) => `- ${f}`).join('\n') : ''}` 
+        }]
+      });
     } catch (error) {
       this.logger.error('Error generating AI risk analysis:', error);
-      throw new InternalServerErrorException('Failed to generate risk analysis from AI.');
+      throw new InternalServerErrorException('Failed to generate risk analysis.');
+    }
+  }
+
+  /**
+   * Continues an existing AI conversation
+   */
+  async followUpChat(insightId: string, userMessage: string): Promise<any> {
+    const insight = await this.aiInsightModel.findById(insightId);
+    if (!insight) throw new NotFoundException('Insight conversation not found.');
+
+    const history = insight.conversation.map(m => ({
+      role: m.role,
+      parts: [{ text: m.content }]
+    }));
+
+    try {
+      const chat = this.model.startChat({ history });
+      const result = await chat.sendMessage(userMessage);
+      const modelResponse = (await result.response).text();
+
+      insight.conversation.push({ role: 'user', content: userMessage, timestamp: new Date() });
+      insight.conversation.push({ role: 'model', content: modelResponse, timestamp: new Date() });
+      insight.lastAccessed = new Date();
+      
+      return await insight.save();
+    } catch (error) {
+      this.logger.error('Error in AI follow-up chat:', error);
+      throw new InternalServerErrorException('AI failed to respond.');
     }
   }
 
@@ -144,26 +199,29 @@ export class AiInsightsService {
    * Analyzes the monitoring cycle of a farm and provides marketability insights
    */
   async analyzeMonitoringCycle(farmData: any, historicalNdvi: any[], historicalWeather: any[]): Promise<any> {
+    const farmId = farmData._id || farmData.id;
+    if (!farmId) throw new InternalServerErrorException('Farm ID is required.');
+
+    const existing = await this.aiInsightModel.findOne({ 
+      contextId: new Types.ObjectId(farmId), 
+      type: 'MONITORING_CYCLE' 
+    });
+    
+    if (existing) return existing;
+
     if (!this.model) {
       throw new InternalServerErrorException('AI Model is not configured.');
     }
 
     const prompt = `
       You are an advanced Agricultural Data Scientist AI.
-      Analyze the "Monitoring Cycle" of the following farm based on its historical satellite and weather data.
+      Analyze the "Monitoring Cycle" of the following farm.
       
-      Farm Info: ${JSON.stringify(farmData, null, 2)}
-      Historical NDVI (Vegetation Index): ${JSON.stringify(historicalNdvi, null, 2)}
-      Historical Weather: ${JSON.stringify(historicalWeather, null, 2)}
+      Farm Info: ${JSON.stringify(farmData)}
+      Historical NDVI: ${JSON.stringify(historicalNdvi)}
+      Historical Weather: ${JSON.stringify(historicalWeather)}
       
-      Please provide a comprehensive analysis including:
-      1. Current Growth Stage (e.g., Germination, Vegetative, Flowering, Maturity).
-      2. Health Trend (Are things improving or declining?).
-      3. Anomaly Detection (Any weird drops in NDVI not explained by weather?).
-      4. Estimated Days to Harvest.
-      5. Marketability Insight (How can this farm's data be packaged for insurance investors or food buyers?).
-      
-      Format the response as a valid JSON object:
+      Return STRICTLY JSON:
       {
         "currentStage": "string",
         "healthTrend": "Improving" | "Stable" | "Declining",
@@ -174,26 +232,38 @@ export class AiInsightsService {
         "recommendations": ["string"],
         "investmentPotential": "string"
       }
-      
-      Respond ONLY with the JSON object, no markdown formatting.
     `;
 
     try {
-      this.logger.debug('Analyzing monitoring cycle for farm...');
       const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
-      
-      if (text.startsWith('```json')) {
-        text = text.replace(/^```json/g, '').replace(/```$/g, '').trim();
-      } else if (text.startsWith('```')) {
-        text = text.replace(/^```/g, '').replace(/```$/g, '').trim();
-      }
+      let text = (await result.response).text().trim();
+      if (text.startsWith('```json')) text = text.replace(/^```json/g, '').replace(/```$/g, '').trim();
+      const parsedData = JSON.parse(text);
 
-      return JSON.parse(text);
+      return await this.aiInsightModel.create({
+        role: 'FARMER',
+        type: 'MONITORING_CYCLE',
+        contextId: new Types.ObjectId(farmId),
+        contextModel: 'Farm',
+        data: parsedData,
+        conversation: [{ 
+          role: 'model', 
+          content: `Monitoring Cycle Analysis: ${parsedData.cycleAnalysis}. Current Stage: ${parsedData.currentStage}.` 
+        }]
+      });
     } catch (error) {
       this.logger.error('Error analyzing monitoring cycle:', error);
-      throw new InternalServerErrorException('Failed to generate cycle analysis from AI.');
+      throw new InternalServerErrorException('Failed to generate cycle analysis.');
     }
+  }
+
+  /**
+   * Finds an existing insight by context and type
+   */
+  async findByContext(contextId: string, type: string): Promise<any> {
+    return await this.aiInsightModel.findOne({ 
+      contextId: new Types.ObjectId(contextId), 
+      type 
+    });
   }
 }

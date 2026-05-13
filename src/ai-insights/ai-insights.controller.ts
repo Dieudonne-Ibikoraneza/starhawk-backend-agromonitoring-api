@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
 import { AiInsightsService } from './ai-insights.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Assuming path based on common structure
 
@@ -74,6 +74,37 @@ export class AiInsightsController {
     return { 
       success: true, 
       data: cycleData 
+    };
+  }
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async followUpChat(
+    @Body() body: { insightId: string; message: string }
+  ) {
+    const updatedInsight = await this.aiInsightsService.followUpChat(
+      body.insightId, 
+      body.message
+    );
+    
+    return { 
+      success: true, 
+      data: updatedInsight 
+    };
+  }
+
+  @Get(':contextId/:type')
+  async getInsight(
+    @Param('contextId') contextId: string,
+    @Param('type') type: string
+  ) {
+    const insight = await this.aiInsightsService.findByContext(contextId, type);
+    if (!insight) {
+      throw new NotFoundException('Insight not found');
+    }
+    return {
+      success: true,
+      data: insight
     };
   }
 }
