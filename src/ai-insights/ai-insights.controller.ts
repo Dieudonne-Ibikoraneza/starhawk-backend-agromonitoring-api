@@ -94,6 +94,19 @@ export class AiInsightsController {
     };
   }
 
+  @Get('portfolio-insight')
+  async getPortfolioInsight(
+    @Query('refresh') refresh?: string,
+    @Query('insurerId') insurerId?: string
+  ) {
+    const forceRefresh = refresh === 'true';
+    const insight = await this.aiInsightsService.getPortfolioInsight(forceRefresh, insurerId);
+    return {
+      success: true,
+      data: insight
+    };
+  }
+
   @Get(':contextId/:type')
   async getInsight(
     @Param('contextId') contextId: string,

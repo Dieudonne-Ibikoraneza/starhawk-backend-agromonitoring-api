@@ -8,13 +8,13 @@ export class AiInsight {
   @Prop({ type: String, enum: ['FARMER', 'ASSESSOR', 'INSURER'], required: true })
   role: string;
 
-  @Prop({ type: String, enum: ['SUGGESTIONS', 'RISK_ANALYSIS', 'MONITORING_CYCLE'], required: true })
+  @Prop({ type: String, enum: ['SUGGESTIONS', 'RISK_ANALYSIS', 'MONITORING_CYCLE', 'PORTFOLIO_INSIGHT'], required: true })
   type: string;
 
   @Prop({ type: Types.ObjectId, refPath: 'contextModel', required: true })
   contextId: Types.ObjectId;
 
-  @Prop({ type: String, required: true, enum: ['Claim', 'Farm'] })
+  @Prop({ type: String, required: true, enum: ['Claim', 'Farm', 'Portfolio'] })
   contextModel: string;
 
   @Prop({ type: Object, required: true })
@@ -37,4 +37,4 @@ export class AiInsight {
 
 export const AiInsightSchema = SchemaFactory.createForClass(AiInsight);
 
-AiInsightSchema.index({ contextId: 1, role: 1, type: 1 }, { unique: true });
+AiInsightSchema.index({ contextId: 1, role: 1, type: 1 });
