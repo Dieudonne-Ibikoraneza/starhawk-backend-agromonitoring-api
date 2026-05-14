@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query, UseGuards, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
 import { AiInsightsService } from './ai-insights.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Assuming path based on common structure
 
@@ -28,12 +28,13 @@ export class AiInsightsController {
   @HttpCode(HttpStatus.OK)
   // @UseGuards(JwtAuthGuard)
   async getRiskAnalysis(
-    @Body() body: { claimData: any; farmData: any; satelliteData: any }
+    @Body() body: { claimData: any; farmData: any; satelliteData: any; role?: string }
   ) {
     const analysis = await this.aiInsightsService.getRiskAnalysis(
       body.claimData, 
       body.farmData, 
-      body.satelliteData
+      body.satelliteData,
+      body.role
     );
     
     return { 
@@ -96,9 +97,10 @@ export class AiInsightsController {
   @Get(':contextId/:type')
   async getInsight(
     @Param('contextId') contextId: string,
-    @Param('type') type: string
+    @Param('type') type: string,
+    @Query('role') role?: string
   ) {
-    const insight = await this.aiInsightsService.findByContext(contextId, type);
+    const insight = await this.aiInsightsService.findByContext(contextId, type, role);
     if (!insight) {
       throw new NotFoundException('Insight not found');
     }

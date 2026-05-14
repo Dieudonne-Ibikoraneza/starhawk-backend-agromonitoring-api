@@ -87,13 +87,17 @@ export class AiInsightsService {
   /**
    * Generates a risk analysis summary for assessors/insurers based on claims
    */
-  async getRiskAnalysis(claimData: any, farmData: any, satelliteData: any): Promise<any> {
+  async getRiskAnalysis(claimData: any, farmData: any, satelliteData: any, role?: string): Promise<any> {
     const claimId = claimData._id || claimData.id;
     if (!claimId) throw new InternalServerErrorException('Claim ID is required.');
 
+    // Determine role if not provided
+    const targetRole = role || (claimData.status === 'PENDING' ? 'ASSESSOR' : 'INSURER');
+
     const existing = await this.aiInsightModel.findOne({ 
       contextId: new Types.ObjectId(claimId), 
-      type: 'RISK_ANALYSIS' 
+      type: 'RISK_ANALYSIS',
+      role: targetRole
     });
     
     if (existing) return existing;
@@ -126,7 +130,7 @@ export class AiInsightsService {
       const parsedData = JSON.parse(text);
 
       return await this.aiInsightModel.create({
-        role: claimData.status === 'PENDING' ? 'ASSESSOR' : 'INSURER',
+        role: targetRole,
         type: 'RISK_ANALYSIS',
         contextId: new Types.ObjectId(claimId),
         contextModel: 'Claim',
@@ -260,10 +264,12 @@ export class AiInsightsService {
   /**
    * Finds an existing insight by context and type
    */
-  async findByContext(contextId: string, type: string): Promise<any> {
-    return await this.aiInsightModel.findOne({ 
+  async findByContext(contextId: string, type: string, role?: string): Promise<any> {
+    const query: any = { 
       contextId: new Types.ObjectId(contextId), 
       type 
-    });
+    };
+    if (role) query.role = role;
+    return await this.aiInsightModel.findOne(query);
   }
 }
