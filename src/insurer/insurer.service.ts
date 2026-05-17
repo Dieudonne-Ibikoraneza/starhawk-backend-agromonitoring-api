@@ -207,6 +207,23 @@ export class InsurerService {
       entry.policies.push(policy);
     }
 
+    // Fetch farmer profiles for all these farmers to get their profile picture
+    const farmerStrIds = Array.from(farmersMap.keys());
+    const farmerObjIds = farmerStrIds.map(id => new Types.ObjectId(id));
+    const queryIds = [...farmerStrIds, ...farmerObjIds];
+    const profilesMap = new Map<string, string>();
+    try {
+      const farmerProfileModel = this.userModel.db.model('FarmerProfile');
+      const profiles = await farmerProfileModel.find({ userId: { $in: queryIds } }).exec();
+      for (const prof of profiles) {
+        if (prof.profilePictureUrl && prof.userId) {
+          profilesMap.set(prof.userId.toString(), prof.profilePictureUrl);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch farmer profiles:', e);
+    }
+
     // 3. Construct response items
     const result = [];
     for (const [farmerId, data] of farmersMap.entries()) {
@@ -227,6 +244,7 @@ export class InsurerService {
         province: data.farmer.province || 'N/A',
         district: data.farmer.district || 'N/A',
         sector: data.farmer.sector || 'N/A',
+        profilePictureUrl: profilesMap.get(farmerId) || null,
         activePoliciesCount: activePolicies.length,
         totalPoliciesCount: data.policies.length,
         status: activePolicies.length > 0 ? 'ACTIVE' : 'INACTIVE',

@@ -223,25 +223,73 @@ export class AssessmentsService {
     return assessment;
   }
 
+  private async populateFarmerProfiles(assessments: any[]) {
+    if (!assessments || assessments.length === 0) return assessments;
+    
+    // Find all farmer IDs
+    const farmerIds = new Set<string>();
+    for (const assessment of assessments) {
+      const farmer = assessment.farmId?.farmerId || assessment.farmerId;
+      if (farmer) {
+        const farmerId = farmer._id?.toString() || farmer.toString();
+        farmerIds.add(farmerId);
+      }
+    }
+
+    if (farmerIds.size === 0) return assessments;
+
+    // Fetch all farmer profiles
+    const profilesMap = new Map<string, string>();
+    try {
+      const profiles = await this.profilesRepository.findFarmerProfilesByUserIds(Array.from(farmerIds));
+      for (const prof of profiles) {
+        if (prof.profilePictureUrl) {
+          profilesMap.set(prof.userId.toString(), prof.profilePictureUrl);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to populate farmer profiles for assessments:', e);
+    }
+
+    // Map profiles back onto the populated farmer objects
+    return assessments.map(assessment => {
+      const assessmentObj = assessment.toObject ? assessment.toObject() : assessment;
+      
+      const farmer = assessmentObj.farmId?.farmerId || assessmentObj.farmerId;
+      if (farmer) {
+        const farmerId = farmer._id?.toString() || farmer.toString();
+        if (profilesMap.has(farmerId)) {
+          if (assessmentObj.farmId && assessmentObj.farmId.farmerId) {
+            assessmentObj.farmId.farmerId.profilePictureUrl = profilesMap.get(farmerId);
+          }
+          if (assessmentObj.farmerId) {
+            assessmentObj.farmerId.profilePictureUrl = profilesMap.get(farmerId);
+          }
+        }
+      }
+      return assessmentObj;
+    });
+  }
+
   async getAssessorAssessments(assessorId: string) {
     console.log('getAssessorAssessments called with assessorId:', assessorId);
     const assessments = await this.assessmentsRepository.findByAssessorId(assessorId);
     console.log(`Found ${assessments.length} assessments for assessor ${assessorId}`);
-    return assessments;
+    return this.populateFarmerProfiles(assessments);
   }
 
   async getInsurerAssessments(insurerId: string) {
     console.log('getInsurerAssessments called with insurerId:', insurerId);
     const assessments = await this.assessmentsRepository.findByInsurerId(insurerId);
     console.log(`Found ${assessments.length} assessments for insurer ${insurerId}`);
-    return assessments;
+    return this.populateFarmerProfiles(assessments);
   }
 
   async getAllAssessments() {
     console.log('getAllAssessments called');
     const assessments = await this.assessmentsRepository.findAll();
     console.log(`Found ${assessments.length} total assessments`);
-    return assessments;
+    return this.populateFarmerProfiles(assessments);
   }
 
   async getAllFarmersWithFarms(assessorId?: string): Promise<FarmerWithFarmsResponseDto[]> {
