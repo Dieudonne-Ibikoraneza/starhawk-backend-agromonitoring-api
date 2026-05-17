@@ -37,7 +37,19 @@ export class ProfilesRepository {
   async findFarmerProfileByUserId(
     userId: string,
   ): Promise<FarmerProfileDocument | null> {
-    return this.farmerProfileModel.findOne({ userId }).exec();
+    const queryIds: any[] = [userId];
+    if (Types.ObjectId.isValid(userId)) {
+      queryIds.push(new Types.ObjectId(userId));
+    }
+    return this.farmerProfileModel.findOne({ userId: { $in: queryIds } }).exec();
+  }
+
+  async findFarmerProfilesByUserIds(
+    userIds: string[],
+  ): Promise<FarmerProfileDocument[]> {
+    const oids = userIds.filter(id => Types.ObjectId.isValid(id)).map(id => new Types.ObjectId(id));
+    const queryIds = [...userIds, ...oids];
+    return this.farmerProfileModel.find({ userId: { $in: queryIds } }).exec();
   }
 
   async updateFarmerProfile(
