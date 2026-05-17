@@ -175,4 +175,75 @@ export class InsurerService {
       monthlyTrends,
     };
   }
+
+  async getInsuredFarmers(insurerId: string) {
+    const insurerObjectId = new Types.ObjectId(insurerId);
+
+    // 1. Find all policies for this insurer, populating farmer and farm info
+    const policies = await this.policyModel
+      .find({ insurerId: insurerObjectId })
+      .populate('farmerId')
+      .populate('farmId')
+      .exec();
+
+    // 2. Map and group policies by farmerId
+    const farmersMap = new Map<string, {
+      farmer: any;
+      policies: any[];
+    }>();
+
+    for (const policy of policies) {
+      if (!policy.farmerId) continue;
+      const farmerIdStr = (policy.farmerId as any)._id?.toString() || (policy.farmerId as any).toString();
+      
+      let entry = farmersMap.get(farmerIdStr);
+      if (!entry) {
+        entry = {
+          farmer: policy.farmerId,
+          policies: [],
+        };
+        farmersMap.set(farmerIdStr, entry);
+      }
+      entry.policies.push(policy);
+    }
+
+    // 3. Construct response items
+    const result = [];
+    for (const [farmerId, data] of farmersMap.entries()) {
+      const activePolicies = data.policies.filter(p => p.status === 'ACTIVE');
+      const latestPolicy = data.policies.reduce((latest, current) => {
+        const latestDate = latest.issuedAt || latest.createdAt || new Date(0);
+        const currentDate = current.issuedAt || current.createdAt || new Date(0);
+        return currentDate > latestDate ? current : latest;
+      }, data.policies[0]);
+
+      result.push({
+        id: data.farmer._id,
+        firstName: data.farmer.firstName,
+        lastName: data.farmer.lastName,
+        name: `${data.farmer.firstName} ${data.farmer.lastName}`.trim(),
+        email: data.farmer.email,
+        phoneNumber: data.farmer.phoneNumber,
+        province: data.farmer.province || 'N/A',
+        district: data.farmer.district || 'N/A',
+        sector: data.farmer.sector || 'N/A',
+        activePoliciesCount: activePolicies.length,
+        totalPoliciesCount: data.policies.length,
+        status: activePolicies.length > 0 ? 'ACTIVE' : 'INACTIVE',
+        lastCoverageDate: latestPolicy?.endDate || null,
+        latestPolicy: latestPolicy ? {
+          id: latestPolicy._id,
+          policyNumber: latestPolicy.policyNumber,
+          cropType: latestPolicy.farmId?.cropType || 'N/A',
+          farmName: latestPolicy.farmId?.name || 'N/A',
+          premiumAmount: latestPolicy.premiumAmount,
+          startDate: latestPolicy.startDate,
+          endDate: latestPolicy.endDate,
+          status: latestPolicy.status,
+        } : null,
+      });
+    }
+
+    return result;
+  }
 }

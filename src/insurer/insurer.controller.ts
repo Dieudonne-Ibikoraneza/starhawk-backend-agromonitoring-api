@@ -28,4 +28,11 @@ export class InsurerController {
   async getReports(@CurrentUser() user: any) {
     return this.insurerService.getReports(user.userId);
   }
+
+  @Get('farmers')
+  @ApiOperation({ summary: 'Get farmers insured by this insurer' })
+  @ApiResponse({ status: 200 })
+  async getInsuredFarmers(@CurrentUser() user: any) {
+    return this.insurerService.getInsuredFarmers(user.userId);
+  }
 }
