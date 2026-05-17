@@ -228,9 +228,10 @@ export class PhotosService {
           console.log(`AutoMap: Insurer update ${insResult ? 'succeeded' : 'failed'}`);
           break;
         case Role.FARMER:
-          await this.profilesRepository.updateFarmerProfile(userId, {
-            // Add field if farmers get profile pics later
-          } as any);
+          const farmResult = await this.profilesRepository.updateFarmerProfile(userId, {
+            profilePictureUrl: url,
+          });
+          console.log(`AutoMap: Farmer update ${farmResult ? 'succeeded' : 'failed'}`);
           break;
       }
     } else if (type === PhotoType.LOGO && user.role === Role.INSURER) {

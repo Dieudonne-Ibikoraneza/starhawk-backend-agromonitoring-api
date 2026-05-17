@@ -22,6 +22,9 @@ export class FarmerProfile {
 
   @Prop()
   farmVillage?: string;
+
+  @Prop({ type: String })
+  profilePictureUrl?: string | null;
 }
 
 export const FarmerProfileSchema =

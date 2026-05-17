@@ -397,6 +397,7 @@ export class UsersService implements OnModuleInit {
             farmSector: farmerProfile.farmSector,
             farmCell: farmerProfile.farmCell,
             farmVillage: farmerProfile.farmVillage,
+            profilePictureUrl: (farmerProfile as any).profilePictureUrl || undefined,
           };
         }
         break;

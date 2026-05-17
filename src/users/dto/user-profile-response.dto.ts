@@ -16,6 +16,9 @@ export class FarmerProfileDto {
 
   @ApiProperty()
   farmVillage?: string;
+
+  @ApiProperty()
+  profilePictureUrl?: string;
 }
 
 export class AssessorProfileDto {
