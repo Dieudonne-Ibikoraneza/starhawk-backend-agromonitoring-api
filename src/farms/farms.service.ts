@@ -56,15 +56,15 @@ export class FarmsService {
       throw new BadRequestException('Invalid sowing date format');
     }
 
-    // Validate sowing date is at least 14 days in the future
+    // Validate sowing date is at least 14 days prior to today (in the past)
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset time to start of day
-    const minSowingDate = new Date(today);
-    minSowingDate.setDate(today.getDate() + 14); // 14 days from today
+    const maxSowingDate = new Date(today);
+    maxSowingDate.setDate(today.getDate() - 14); // 14 days prior to today
 
-    if (sowingDate < minSowingDate) {
+    if (sowingDate > maxSowingDate) {
       throw new BadRequestException(
-        `Sowing date must be at least 14 days in the future. Minimum date: ${minSowingDate.toISOString().split('T')[0]}`,
+        `Sowing date must be at least 14 days prior to today. Maximum allowed date: ${maxSowingDate.toISOString().split('T')[0]}`,
       );
     }
 
