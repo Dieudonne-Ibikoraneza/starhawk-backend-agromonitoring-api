@@ -51,20 +51,30 @@ export class FarmsService {
    */
   async createSimple(farmerId: string, createDto: CreateFarmSimpleDto): Promise<FarmResponseDto> {
     // Validate sowing date
-    const sowingDate = new Date(createDto.sowingDate);
+    if (!createDto.sowingDate) {
+      throw new BadRequestException('Sowing date is required');
+    }
+
+    const dateParts = createDto.sowingDate.split('-').map(Number);
+    if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+      throw new BadRequestException('Invalid sowing date format');
+    }
+
+    const sowingDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], 0, 0, 0, 0));
     if (isNaN(sowingDate.getTime())) {
       throw new BadRequestException('Invalid sowing date format');
     }
 
-    // Validate sowing date is at least 14 days prior to today (in the past)
+    // Validate sowing date is at least 14 days prior to today (in the past) in UTC
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to start of day
-    const maxSowingDate = new Date(today);
-    maxSowingDate.setDate(today.getDate() - 14); // 14 days prior to today
+    const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
+    const maxSowingDate = new Date(todayUTC);
+    maxSowingDate.setUTCDate(todayUTC.getUTCDate() - 14); // 14 days prior to today
 
     if (sowingDate > maxSowingDate) {
+      const maxSowingDateStr = maxSowingDate.toISOString().split('T')[0];
       throw new BadRequestException(
-        `Sowing date must be at least 14 days prior to today. Maximum allowed date: ${maxSowingDate.toISOString().split('T')[0]}`,
+        `Sowing date must be at least 14 days prior to today. Maximum allowed date: ${maxSowingDateStr}`,
       );
     }
 
