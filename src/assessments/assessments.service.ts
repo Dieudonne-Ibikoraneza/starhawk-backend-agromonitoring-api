@@ -88,7 +88,7 @@ export class AssessmentsService {
   async updateAssessment(assessorId: string, assessmentId: string, updateDto: UpdateAssessmentDto) {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     if (this.extractId(assessment.assessorId) !== assessorId) {
@@ -112,7 +112,7 @@ export class AssessmentsService {
   async calculateRiskScore(assessmentId: string): Promise<number> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     // farmId is already populated by findById, so check if it's a populated document
@@ -210,7 +210,7 @@ export class AssessmentsService {
   async getAssessment(assessmentId: string) {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
     return assessment;
   }
@@ -572,7 +572,7 @@ export class AssessmentsService {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     if (this.extractId(assessment.assessorId) !== assessorId) {
@@ -632,37 +632,11 @@ export class AssessmentsService {
     // Create URL (relative path)
     const pdfUrl = `/uploads/drone-analysis/${filename}`;
 
-    // Convert to absolute path for Python service
-    const absoluteFilePath = path.resolve(filePath);
-
-    // Call Python service to extract data
-    let droneAnalysisData = null;
-    try {
-      console.log(`Calling drone analysis service for: ${absoluteFilePath}`);
-      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
-      console.log('Drone analysis result:', analysisResult);
-
-      if (analysisResult.success && analysisResult.extractedData) {
-        droneAnalysisData = analysisResult.extractedData;
-        console.log('Successfully extracted drone data');
-      } else {
-        // Log warning but continue - PDF is saved even if extraction fails
-        console.warn(
-          `Drone data extraction failed for assessment ${assessmentId}: ${analysisResult.error}`,
-        );
-      }
-    } catch (error) {
-      // Log error but continue - PDF is saved even if extraction fails
-      console.error(
-        `Failed to extract drone data for assessment ${assessmentId}: ${error.message}`,
-      );
-    }
-
-    // Create new PDF entry
+    // Create new PDF entry with droneAnalysisData as null initially
     const newPdfEntry = {
       pdfType: resolvedPdfType,
       pdfUrl,
-      droneAnalysisData,
+      droneAnalysisData: null,
       uploadedAt: new Date(),
     };
 
@@ -676,6 +650,76 @@ export class AssessmentsService {
       assessmentId,
       pdfType: resolvedPdfType,
       pdfUrl,
+      droneAnalysisData: null,
+      assessment: updatedAssessment,
+    };
+  }
+
+  /**
+   * Process manual drone analysis PDF (extract crop intelligence on demand)
+   */
+  async processDroneAnalysis(
+    assessorId: string,
+    assessmentId: string,
+    pdfType: string,
+  ): Promise<any> {
+    // Validate assessment exists and belongs to assessor
+    const assessment = await this.assessmentsRepository.findById(assessmentId);
+    if (!assessment) {
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
+    }
+
+    if (this.extractId(assessment.assessorId) !== assessorId) {
+      throw new BadRequestException('Assessment does not belong to this assessor');
+    }
+
+    const existingPdfs = assessment.droneAnalysisPdfs || [];
+    const pdfIndex = existingPdfs.findIndex(p => p.pdfType === pdfType);
+    if (pdfIndex === -1) {
+      throw new NotFoundException(`PDF of type "${pdfType}" not found for this assessment`);
+    }
+
+    const pdfEntry = existingPdfs[pdfIndex];
+    const path = require('path');
+    
+    // Resolve absolute path from relative pdfUrl (e.g. /uploads/drone-analysis/filename.pdf)
+    const relativePath = pdfEntry.pdfUrl.startsWith('/') ? pdfEntry.pdfUrl.slice(1) : pdfEntry.pdfUrl;
+    const absoluteFilePath = path.resolve('.', relativePath);
+
+    const fs = require('fs');
+    if (!fs.existsSync(absoluteFilePath)) {
+      throw new NotFoundException(`PDF file not found on disk at: ${absoluteFilePath}`);
+    }
+
+    console.log(`Processing manual drone analysis for: ${absoluteFilePath}`);
+    let droneAnalysisData = null;
+    try {
+      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
+      console.log('Drone analysis result:', analysisResult);
+
+      if (analysisResult.success && analysisResult.extractedData) {
+        droneAnalysisData = analysisResult.extractedData;
+        console.log('Successfully extracted drone data');
+      } else {
+        throw new BadRequestException(`Drone data extraction failed: ${analysisResult.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error(`Failed to extract drone data: ${error.message}`);
+      throw new BadRequestException(`Failed to extract drone data: ${error.message}`);
+    }
+
+    // Update the specific PDF entry in the array
+    pdfEntry.droneAnalysisData = droneAnalysisData;
+    
+    // Persist changes
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      droneAnalysisPdfs: existingPdfs,
+    });
+
+    return {
+      assessmentId,
+      pdfType,
+      pdfUrl: pdfEntry.pdfUrl,
       droneAnalysisData,
       assessment: updatedAssessment,
     };
@@ -687,7 +731,7 @@ export class AssessmentsService {
   async getUploadedPdfs(assessmentId: string): Promise<any> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     return assessment.droneAnalysisPdfs || [];
@@ -700,7 +744,7 @@ export class AssessmentsService {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     if (this.extractId(assessment.assessorId) !== assessorId) {
@@ -807,7 +851,7 @@ export class AssessmentsService {
     // Validate assessment exists and belongs to assessor
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     if (this.extractId(assessment.assessorId) !== assessorId) {
@@ -935,7 +979,7 @@ export class AssessmentsService {
   async approveAssessment(insurerId: string, assessmentId: string): Promise<any> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     // Validate assessment belongs to insurer
@@ -1012,7 +1056,7 @@ export class AssessmentsService {
   ): Promise<any> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
     if (!assessment) {
-      throw new NotFoundException('Assessment', assessmentId);
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
     }
 
     // Validate assessment belongs to insurer

@@ -94,8 +94,8 @@ export class CropMonitoringController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List crop monitoring tasks (role-based)' })
-  @ApiResponse({ status: 200 })
+  @ApiOperation({ summary: 'List crop monitoring records (role-based, parents only without nested cycles)' })
+  @ApiResponse({ status: 200, description: 'Role-based list of crop monitoring parents' })
   async getMonitoringTasks(@CurrentUser() user: any) {
     // ASSESSOR: See their monitoring tasks
     if (user.role === Role.ASSESSOR) {
@@ -112,7 +112,7 @@ export class CropMonitoringController {
   @Get('records/all')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'List all crop monitoring cycles (Admin only)' })
+  @ApiOperation({ summary: 'List all crop monitoring records (Admin only, parents only without nested cycles)' })
   @ApiResponse({ status: 200 })
   async getAllMonitoringRecordsAdmin() {
     return this.cropMonitoringService.getAllMonitoringRecordsForAdmin();
@@ -188,8 +188,8 @@ export class CropMonitoringController {
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.INSURER, Role.ASSESSOR)
-  @ApiOperation({ summary: 'Get one monitoring cycle by id' })
-  @ApiResponse({ status: 200 })
+  @ApiOperation({ summary: 'Get crop monitoring by ID (including all monitoring cycles inside the response)' })
+  @ApiResponse({ status: 200, description: 'Crop monitoring record details with all nested monitoring cycles' })
   async getMonitoringByIdAdmin(@Param('id', UuidValidationPipe) id: string) {
     return this.cropMonitoringService.getMonitoringByIdForAdmin(id);
   }

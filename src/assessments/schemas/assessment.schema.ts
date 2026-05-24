@@ -39,7 +39,7 @@ export class Assessment {
   droneAnalysisPdfs?: {
     pdfType: string;
     pdfUrl: string;
-    droneAnalysisData?: object;
+    droneAnalysisData?: object | null;
     uploadedAt: Date;
   }[];
 

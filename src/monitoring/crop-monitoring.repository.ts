@@ -1,22 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CropMonitoring, CropMonitoringDocument } from './schemas/crop-monitoring.schema';
-import { Types } from 'mongoose';
+import { CropMonitoringCycle, CropMonitoringCycleDocument } from './schemas/crop-monitoring-cycle.schema';
 
 @Injectable()
 export class CropMonitoringRepository {
   constructor(
     @InjectModel(CropMonitoring.name)
     private cropMonitoringModel: Model<CropMonitoringDocument>,
+    @InjectModel(CropMonitoringCycle.name)
+    private cropMonitoringCycleModel: Model<CropMonitoringCycleDocument>,
   ) {}
 
-  async create(data: Partial<CropMonitoring>): Promise<CropMonitoringDocument> {
-    const cropMonitoring = new this.cropMonitoringModel(data);
-    return cropMonitoring.save();
+  // ---------------- Parent Methods ----------------
+
+  async createParent(data: Partial<CropMonitoring>): Promise<CropMonitoringDocument> {
+    const parent = new this.cropMonitoringModel(data);
+    return parent.save();
   }
 
-  async findById(id: string): Promise<CropMonitoringDocument | null> {
+  async findParentById(id: string): Promise<CropMonitoringDocument | null> {
     return this.cropMonitoringModel
       .findById(id)
       .populate({
@@ -28,47 +32,31 @@ export class CropMonitoringRepository {
       .exec();
   }
 
-  async findByPolicyId(policyId: string): Promise<CropMonitoringDocument[]> {
+  async findParentByPolicyId(policyId: string): Promise<CropMonitoringDocument | null> {
     return this.cropMonitoringModel
-      .find({ policyId: new Types.ObjectId(policyId) })
+      .findOne({ policyId: new Types.ObjectId(policyId) })
       .populate({
         path: 'policyId',
         populate: { path: 'farmerId' }
       })
       .populate('farmId')
       .populate('assessorId')
-      .sort({ monitoringNumber: 1 })
       .exec();
   }
 
-  async findByAssessorId(assessorId: string): Promise<CropMonitoringDocument[]> {
+  async findParentByFarmId(farmId: string): Promise<CropMonitoringDocument | null> {
     return this.cropMonitoringModel
-      .find({ assessorId: new Types.ObjectId(assessorId) })
+      .findOne({ farmId: new Types.ObjectId(farmId) })
       .populate({
         path: 'policyId',
         populate: { path: 'farmerId' }
       })
       .populate('farmId')
       .populate('assessorId')
-      .sort({ createdAt: -1 })
       .exec();
   }
 
-  async countByPolicyId(policyId: string): Promise<number> {
-    const objectId = new Types.ObjectId(policyId);
-    console.log(' Counting monitoring cycles for policy:', {
-      policyId,
-      objectId,
-      objectIdString: objectId.toString(),
-    });
-
-    const result = await this.cropMonitoringModel.countDocuments({ policyId: objectId }).exec();
-
-    console.log(' Count result:', result);
-    return result;
-  }
-
-  async update(
+  async updateParent(
     id: string,
     updateData: Partial<CropMonitoring>,
   ): Promise<CropMonitoringDocument | null> {
@@ -83,7 +71,33 @@ export class CropMonitoringRepository {
       .exec();
   }
 
-  async findAll(): Promise<CropMonitoringDocument[]> {
+  async findParentsByAssessorId(assessorId: string): Promise<CropMonitoringDocument[]> {
+    return this.cropMonitoringModel
+      .find({ assessorId: new Types.ObjectId(assessorId) })
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
+      .populate('farmId')
+      .populate('assessorId')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  async findParentsByPolicyIds(policyIds: Types.ObjectId[]): Promise<CropMonitoringDocument[]> {
+    return this.cropMonitoringModel
+      .find({ policyId: { $in: policyIds } })
+      .populate({
+        path: 'policyId',
+        populate: { path: 'farmerId' }
+      })
+      .populate('farmId')
+      .populate('assessorId')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  async findAllParents(): Promise<CropMonitoringDocument[]> {
     return this.cropMonitoringModel
       .find()
       .populate({
@@ -96,16 +110,36 @@ export class CropMonitoringRepository {
       .exec();
   }
 
-  async findByPolicyIds(policyIds: Types.ObjectId[]): Promise<CropMonitoringDocument[]> {
-    return this.cropMonitoringModel
-      .find({ policyId: { $in: policyIds } })
-      .populate({
-        path: 'policyId',
-        populate: { path: 'farmerId' }
-      })
-      .populate('farmId')
-      .populate('assessorId')
-      .sort({ createdAt: -1 })
+  // ---------------- Cycle Methods ----------------
+
+  async createCycle(data: Partial<CropMonitoringCycle>): Promise<CropMonitoringCycleDocument> {
+    const cycle = new this.cropMonitoringCycleModel(data);
+    return cycle.save();
+  }
+
+  async findCyclesByParentId(parentId: string): Promise<CropMonitoringCycleDocument[]> {
+    return this.cropMonitoringCycleModel
+      .find({ cropMonitoringId: new Types.ObjectId(parentId) })
+      .sort({ monitoringNumber: 1 })
+      .exec();
+  }
+
+  async findCycleById(cycleId: string): Promise<CropMonitoringCycleDocument | null> {
+    return this.cropMonitoringCycleModel.findById(cycleId).exec();
+  }
+
+  async updateCycle(
+    cycleId: string,
+    updateData: Partial<CropMonitoringCycle>,
+  ): Promise<CropMonitoringCycleDocument | null> {
+    return this.cropMonitoringCycleModel
+      .findByIdAndUpdate(cycleId, updateData, { new: true })
+      .exec();
+  }
+
+  async countCyclesByParentId(parentId: string): Promise<number> {
+    return this.cropMonitoringCycleModel
+      .countDocuments({ cropMonitoringId: new Types.ObjectId(parentId) })
       .exec();
   }
 }

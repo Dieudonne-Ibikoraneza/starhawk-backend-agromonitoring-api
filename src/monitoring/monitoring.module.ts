@@ -13,6 +13,10 @@ import {
   CropMonitoring,
   CropMonitoringSchema,
 } from './schemas/crop-monitoring.schema';
+import {
+  CropMonitoringCycle,
+  CropMonitoringCycleSchema,
+} from './schemas/crop-monitoring-cycle.schema';
 import { PoliciesModule } from '../policies/policies.module';
 import { FarmsModule } from '../farms/farms.module';
 import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
@@ -29,6 +33,7 @@ import { AssessmentsModule } from '../assessments/assessments.module';
       { name: MonitoringRecord.name, schema: MonitoringRecordSchema },
       { name: Alert.name, schema: AlertSchema },
       { name: CropMonitoring.name, schema: CropMonitoringSchema },
+      { name: CropMonitoringCycle.name, schema: CropMonitoringCycleSchema },
     ]),
     PoliciesModule,
     FarmsModule,

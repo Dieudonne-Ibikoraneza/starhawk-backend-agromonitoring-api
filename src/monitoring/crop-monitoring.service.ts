@@ -63,9 +63,20 @@ export class CropMonitoringService {
       throw new NotFoundException('Farm', this.extractId(policy.farmId));
     }
 
-    // Check existing monitoring cycles for this policy
-    this.logger.log(`Checking existing monitoring cycles for policy: ${policyId}`);
-    const existingCycles = await this.cropMonitoringRepository.findByPolicyId(policyId);
+    // Find or create parent CropMonitoring record
+    let parent = await this.cropMonitoringRepository.findParentByPolicyId(policyId);
+    if (!parent) {
+      this.logger.log(`Creating new parent CropMonitoring for policy ${policyId}`);
+      parent = await this.cropMonitoringRepository.createParent({
+        policyId: new Types.ObjectId(policyId),
+        farmId: new Types.ObjectId(resolvedFarmId),
+        assessorId: new Types.ObjectId(assessorId),
+        status: CropMonitoringStatus.IN_PROGRESS,
+      });
+    }
+
+    // Check existing cycles under this parent
+    const existingCycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
     const completedCount = existingCycles.filter(
       c => c.status === CropMonitoringStatus.COMPLETED,
     ).length;
@@ -108,28 +119,34 @@ export class CropMonitoringService {
       }
     }
 
-    // Create monitoring record
-    const monitoring = await this.cropMonitoringRepository.create({
-      policyId: new Types.ObjectId(policyId),
-      farmId: new Types.ObjectId(resolvedFarmId),
-      assessorId: new Types.ObjectId(assessorId),
+    // Create monitoring cycle record
+    const cycle = await this.cropMonitoringRepository.createCycle({
+      cropMonitoringId: parent._id as Types.ObjectId,
       monitoringNumber,
       monitoringDate: new Date(),
       weatherData,
       status: CropMonitoringStatus.IN_PROGRESS,
     });
 
-    this.logger.log(`Crop monitoring cycle ${monitoringNumber} started for policy ${policyId}`);
+    this.logger.log(`Crop monitoring cycle ${monitoringNumber} started for parent ${parent._id}`);
 
-    return this.attachRecommendation(monitoring, farm);
+    // Return the cycle with parent details flattened for frontend compatibility
+    const formattedCycle = {
+      ...(cycle.toObject?.() ?? cycle),
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+    };
+
+    return this.attachRecommendation(formattedCycle, farm);
   }
 
   /**
-   * Update crop monitoring data
+   * Update crop monitoring data (updates a specific cycle)
    */
   async updateMonitoring(
     assessorId: string,
-    monitoringId: string,
+    cycleId: string,
     updateData: {
       observations?: string[];
       notes?: string;
@@ -137,58 +154,78 @@ export class CropMonitoringService {
       photoUrls?: string[];
     },
   ): Promise<any> {
-    // Validate monitoring exists and belongs to assessor
-    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
-    if (!monitoring) {
-      throw new NotFoundException('CropMonitoring', monitoringId);
+    // Validate cycle exists
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
     }
 
-    if (this.extractId(monitoring.assessorId) !== assessorId) {
+    // Retrieve parent
+    const parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+    if (!parent) {
+      throw new NotFoundException(`Parent monitoring not found for cycle ${cycleId}`);
+    }
+
+    if (this.extractId(parent.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
-    // Validate monitoring is in progress
-    if (monitoring.status !== CropMonitoringStatus.IN_PROGRESS) {
+    // Validate cycle is in progress
+    if (cycle.status !== CropMonitoringStatus.IN_PROGRESS) {
       throw new BadRequestException(
-        `Cannot update monitoring. Current status: ${monitoring.status}`,
+        `Cannot update cycle. Current status: ${cycle.status}`,
       );
     }
 
-    // Update monitoring
-    const updated = await this.cropMonitoringRepository.update(monitoringId, updateData);
+    // Update cycle
+    const updatedCycle = await this.cropMonitoringRepository.updateCycle(cycleId, updateData);
+    if (!updatedCycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
+    }
 
-    return updated;
+    return {
+      ...(updatedCycle.toObject?.() ?? updatedCycle),
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+    };
   }
 
   /**
-   * Generate monitoring report
+   * Generate monitoring report (for a specific cycle)
    * Validates completeness and sends to insurer
    */
-  async generateMonitoringReport(assessorId: string, monitoringId: string): Promise<any> {
-    // Validate monitoring exists and belongs to assessor
-    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
-    if (!monitoring) {
-      throw new NotFoundException('CropMonitoring', monitoringId);
+  async generateMonitoringReport(assessorId: string, cycleId: string): Promise<any> {
+    // Validate cycle exists
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
     }
 
-    if (this.extractId(monitoring.assessorId) !== assessorId) {
+    // Retrieve parent
+    const parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+    if (!parent) {
+      throw new NotFoundException(`Parent monitoring not found for cycle ${cycleId}`);
+    }
+
+    if (this.extractId(parent.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
-    // Validate monitoring is in progress
-    if (monitoring.status !== CropMonitoringStatus.IN_PROGRESS) {
-      throw new BadRequestException(`Cannot generate report. Current status: ${monitoring.status}`);
+    // Validate cycle is in progress
+    if (cycle.status !== CropMonitoringStatus.IN_PROGRESS) {
+      throw new BadRequestException(`Cannot generate report. Current status: ${cycle.status}`);
     }
 
     // Validate required fields
     const missingFields: string[] = [];
 
-    if (!monitoring.notes || monitoring.notes.trim() === '') {
+    if (!cycle.notes || cycle.notes.trim() === '') {
       missingFields.push('Notes (Assessor notes are required)');
     }
 
     // Validate that at least one drone report is uploaded and processed
-    const uploadedPdfs = monitoring.droneAnalysisPdfs || [];
+    const uploadedPdfs = cycle.droneAnalysisPdfs || [];
     if (uploadedPdfs.length === 0) {
       missingFields.push('Drone Analysis Report (At least one report is required)');
     } else {
@@ -209,31 +246,53 @@ export class CropMonitoringService {
     }
 
     // Check if report already generated
-    if (monitoring.reportGenerated) {
+    if (cycle.reportGenerated) {
       throw new BadRequestException('Report has already been generated');
     }
 
-    // Update monitoring with report generation
-    const updated = await this.cropMonitoringRepository.update(monitoringId, {
+    const reportGeneratedAt = new Date();
+
+    // Update cycle with report generation
+    const updatedCycle = await this.cropMonitoringRepository.updateCycle(cycleId, {
       reportGenerated: true,
-      reportGeneratedAt: new Date(),
+      reportGeneratedAt,
       status: CropMonitoringStatus.COMPLETED,
     });
 
+    // Check if all recommended cycles have been completed.
+    try {
+      const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+      if (farm) {
+        const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+        const maxCycles = getRequiredMonitoringCycles(farm.cropType);
+        const completedCount = cycles.filter(
+          c => c.status === CropMonitoringStatus.COMPLETED || this.extractId((c as any)._id) === cycleId
+        ).length;
+
+        if (completedCount >= maxCycles) {
+          await this.cropMonitoringRepository.updateParent(this.extractId(parent._id), {
+            status: CropMonitoringStatus.COMPLETED,
+          });
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to update parent status: ${err.message}`);
+    }
+
     // Notify insurer
     try {
-      const policy = await this.policiesRepository.findById(this.extractId(monitoring.policyId));
+      const policy = await this.policiesRepository.findById(this.extractId(parent.policyId));
       if (policy) {
         const insurer = await this.usersRepository.findById(this.extractId(policy.insurerId));
         if (insurer) {
-          const farm = await this.farmsRepository.findById(this.extractId(monitoring.farmId));
+          const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
           await this.emailService
             .sendMonitoringReportEmail(
               insurer.email,
               insurer.firstName,
               farm?.name || 'Farm',
-              monitoringId,
-              monitoring.monitoringNumber,
+              cycleId,
+              cycle.monitoringNumber,
             )
             .catch(error => {
               this.logger.error(`Failed to send monitoring report email: ${error.message}`);
@@ -244,20 +303,22 @@ export class CropMonitoringService {
       this.logger.error(`Failed to notify insurer about monitoring report: ${error.message}`);
     }
 
-    this.logger.log(`Monitoring report generated for monitoring ${monitoringId}`);
+    this.logger.log(`Monitoring report generated for cycle ${cycleId}`);
 
     return {
-      monitoringId,
-      policyId: monitoring.policyId,
-      monitoringNumber: monitoring.monitoringNumber,
-      monitoringDate: monitoring.monitoringDate,
-      weatherData: monitoring.weatherData,
-      ndviData: monitoring.ndviData,
-      observations: monitoring.observations,
-      notes: monitoring.notes,
-      droneAnalysisPdfs: monitoring.droneAnalysisPdfs || [],
+      monitoringId: cycleId,
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+      monitoringNumber: cycle.monitoringNumber,
+      monitoringDate: cycle.monitoringDate,
+      weatherData: cycle.weatherData,
+      ndviData: cycle.ndviData,
+      observations: cycle.observations,
+      notes: cycle.notes,
+      droneAnalysisPdfs: cycle.droneAnalysisPdfs || [],
       reportGenerated: true,
-      reportGeneratedAt: new Date(),
+      reportGeneratedAt,
       status: CropMonitoringStatus.COMPLETED,
     };
   }
@@ -266,13 +327,24 @@ export class CropMonitoringService {
    * Get all monitoring tasks for an assessor
    */
   async getAssessorMonitoringTasks(assessorId: string): Promise<any[]> {
-    const records = await this.cropMonitoringRepository.findByAssessorId(assessorId);
-    return Promise.all(
-      records.map(async record => {
-        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
-        return this.attachRecommendation(record, farm);
+    const parents = await this.cropMonitoringRepository.findParentsByAssessorId(assessorId);
+    const allCycles: any[] = [];
+    await Promise.all(
+      parents.map(async parent => {
+        const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+        const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+        cycles.forEach(cycle => {
+          const formatted = {
+            ...(cycle.toObject?.() ?? cycle),
+            policyId: parent.policyId,
+            farmId: parent.farmId,
+            assessorId: parent.assessorId,
+          };
+          allCycles.push(this.attachRecommendation(formatted, farm));
+        });
       }),
     );
+    return allCycles;
   }
 
   /**
@@ -286,63 +358,130 @@ export class CropMonitoringService {
       return [];
     }
 
-    const records = await this.cropMonitoringRepository.findByPolicyIds(policyIds);
-    return Promise.all(
-      records.map(async record => {
-        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
-        return this.attachRecommendation(record, farm);
+    const parents = await this.cropMonitoringRepository.findParentsByPolicyIds(policyIds);
+    const allCycles: any[] = [];
+    await Promise.all(
+      parents.map(async parent => {
+        const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+        const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+        cycles.forEach(cycle => {
+          const formatted = {
+            ...(cycle.toObject?.() ?? cycle),
+            policyId: parent.policyId,
+            farmId: parent.farmId,
+            assessorId: parent.assessorId,
+          };
+          allCycles.push(this.attachRecommendation(formatted, farm));
+        });
       }),
     );
+    return allCycles;
   }
 
   /**
    * Get all monitoring records for a policy
    */
   async getPolicyMonitoringRecords(policyId: string): Promise<any[]> {
-    const records = await this.cropMonitoringRepository.findByPolicyId(policyId);
-    if (records.length === 0) {
+    const parent = await this.cropMonitoringRepository.findParentByPolicyId(policyId);
+    if (!parent) {
       return [];
     }
-    const farm = await this.farmsRepository.findById(this.extractId(records[0].farmId));
-    return records.map(record => this.attachRecommendation(record, farm));
+
+    const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+    const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+    return cycles.map(cycle => {
+      const formatted = {
+        ...(cycle.toObject?.() ?? cycle),
+        policyId: parent.policyId,
+        farmId: parent.farmId,
+        assessorId: parent.assessorId,
+      };
+      return this.attachRecommendation(formatted, farm);
+    });
   }
 
   /** All cycles — admin dashboard */
   async getAllMonitoringRecordsForAdmin() {
-    const records = await this.cropMonitoringRepository.findAll();
-    return Promise.all(
-      records.map(async record => {
-        const farm = await this.farmsRepository.findById(this.extractId(record.farmId));
-        return this.attachRecommendation(record, farm);
+    const parents = await this.cropMonitoringRepository.findAllParents();
+    const allCycles: any[] = [];
+    await Promise.all(
+      parents.map(async parent => {
+        const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+        const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+        cycles.forEach(cycle => {
+          const formatted = {
+            ...(cycle.toObject?.() ?? cycle),
+            policyId: parent.policyId,
+            farmId: parent.farmId,
+            assessorId: parent.assessorId,
+          };
+          allCycles.push(this.attachRecommendation(formatted, farm));
+        });
       }),
     );
+    return allCycles;
   }
 
-  /** Single cycle — admin detail view */
+  /** Single cycle / parent — details view */
   async getMonitoringByIdForAdmin(id: string) {
-    const monitoring = await this.cropMonitoringRepository.findById(id);
-    if (!monitoring) {
+    let parent = await this.cropMonitoringRepository.findParentById(id);
+    let targetCycle: any = null;
+
+    if (!parent) {
+      // Check if it is a cycle ID
+      const cycle = await this.cropMonitoringRepository.findCycleById(id);
+      if (cycle) {
+        targetCycle = cycle;
+        parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+      }
+    }
+
+    if (!parent) {
       throw new NotFoundException('CropMonitoring', id);
     }
-    const farm = await this.farmsRepository.findById(this.extractId(monitoring.farmId));
-    return this.attachRecommendation(monitoring, farm);
+
+    const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+    const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id));
+
+    const formattedCycles = cycles.map(cycle => {
+      const formatted = {
+        ...(cycle.toObject?.() ?? cycle),
+        policyId: parent.policyId,
+        farmId: parent.farmId,
+        assessorId: parent.assessorId,
+      };
+      return this.attachRecommendation(formatted, farm);
+    });
+
+    // If a cycle ID was queried, we also flatten it or return parent with cycles
+    const parentObj = {
+      ...(parent.toObject?.() ?? parent),
+      monitoringCycles: formattedCycles,
+    };
+
+    return this.attachRecommendation(parentObj, farm);
   }
 
   /**
-   * Upload drone analysis PDF for crop monitoring
+   * Upload drone analysis PDF for a specific cycle
    */
   async uploadDroneAnalysis(
     assessorId: string,
-    monitoringId: string,
+    cycleId: string,
     pdfFile: Express.Multer.File,
     pdfType: PdfType,
   ): Promise<any> {
-    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
-    if (!monitoring) {
-      throw new NotFoundException('CropMonitoring', monitoringId);
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
     }
 
-    if (this.extractId(monitoring.assessorId) !== assessorId) {
+    const parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+    if (!parent) {
+      throw new NotFoundException(`Parent monitoring not found for cycle ${cycleId}`);
+    }
+
+    if (this.extractId(parent.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
@@ -350,7 +489,7 @@ export class CropMonitoringService {
       throw new BadRequestException('Only PDF files are allowed');
     }
 
-    const existingPdfs = monitoring.droneAnalysisPdfs || [];
+    const existingPdfs = cycle.droneAnalysisPdfs || [];
     const existingPdf = existingPdfs.find((pdf: any) => pdf.pdfType === pdfType);
     if (existingPdf) {
       throw new BadRequestException(
@@ -372,7 +511,7 @@ export class CropMonitoringService {
 
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 9);
-    const filename = `${pdfType}-monitoring-${monitoringId}-${timestamp}-${randomStr}.pdf`;
+    const filename = `${pdfType}-monitoring-cycle-${cycleId}-${timestamp}-${randomStr}.pdf`;
     const filePath = path.join(uploadDir, filename);
 
     if (pdfFile.path) {
@@ -413,44 +552,60 @@ export class CropMonitoringService {
     };
 
     const updatedPdfs = [...existingPdfs, newPdfEntry];
-    const updatedMonitoring = await this.cropMonitoringRepository.update(monitoringId, {
+    const updatedCycle = await this.cropMonitoringRepository.updateCycle(cycleId, {
       droneAnalysisPdfs: updatedPdfs,
     });
+    if (!updatedCycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
+    }
+
+    const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+    const formattedCycle = {
+      ...(updatedCycle.toObject?.() ?? updatedCycle),
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+    };
 
     return {
-      monitoringId,
+      monitoringId: cycleId,
       pdfType,
       pdfUrl,
       droneAnalysisData,
-      monitoring: updatedMonitoring,
+      monitoring: this.attachRecommendation(formattedCycle, farm),
     };
   }
 
   /**
    * Get all uploaded PDFs for a monitoring cycle
    */
-  async getUploadedPdfs(monitoringId: string): Promise<any> {
-    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
-    if (!monitoring) {
-      throw new NotFoundException('CropMonitoring', monitoringId);
+  async getUploadedPdfs(cycleId: string): Promise<any> {
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
     }
-    return monitoring.droneAnalysisPdfs || [];
+    return cycle.droneAnalysisPdfs || [];
   }
 
   /**
    * Delete a specific PDF from a monitoring cycle
    */
-  async deletePdf(assessorId: string, monitoringId: string, pdfType: PdfType): Promise<any> {
-    const monitoring = await this.cropMonitoringRepository.findById(monitoringId);
-    if (!monitoring) {
-      throw new NotFoundException('CropMonitoring', monitoringId);
+  async deletePdf(assessorId: string, cycleId: string, pdfType: PdfType): Promise<any> {
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
     }
 
-    if (this.extractId(monitoring.assessorId) !== assessorId) {
+    const parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+    if (!parent) {
+      throw new NotFoundException(`Parent monitoring not found for cycle ${cycleId}`);
+    }
+
+    if (this.extractId(parent.assessorId) !== assessorId) {
       throw new BadRequestException('Crop monitoring does not belong to this assessor');
     }
 
-    const existingPdfs = monitoring.droneAnalysisPdfs || [];
+    const existingPdfs = cycle.droneAnalysisPdfs || [];
     const pdfIndex = existingPdfs.findIndex((pdf: any) => pdf.pdfType === pdfType);
 
     if (pdfIndex === -1) {
@@ -470,15 +625,26 @@ export class CropMonitoringService {
 
     const updatedPdfs = existingPdfs.filter((pdf: any) => pdf.pdfType !== pdfType);
 
-    const updatedMonitoring = await this.cropMonitoringRepository.update(monitoringId, {
+    const updatedCycle = await this.cropMonitoringRepository.updateCycle(cycleId, {
       droneAnalysisPdfs: updatedPdfs,
     });
+    if (!updatedCycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
+    }
+
+    const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+    const formattedCycle = {
+      ...(updatedCycle.toObject?.() ?? updatedCycle),
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+    };
 
     return {
-      monitoringId,
+      monitoringId: cycleId,
       pdfType,
       message: `${pdfType.replace('_', ' ')} PDF deleted successfully`,
-      monitoring: updatedMonitoring,
+      monitoring: this.attachRecommendation(formattedCycle, farm),
     };
   }
 
@@ -496,7 +662,8 @@ export class CropMonitoringService {
 
     const totalRecommendedCycles = getRequiredMonitoringCycles(farm.cropType);
     const nextMonitoringDate = new Date(farm.sowingDate);
-    nextMonitoringDate.setDate(nextMonitoringDate.getDate() + monitoring.monitoringNumber * 30);
+    const monitoringNum = monitoring.monitoringNumber || 1;
+    nextMonitoringDate.setDate(nextMonitoringDate.getDate() + monitoringNum * 30);
 
     return {
       ...(monitoring.toObject?.() ?? monitoring),

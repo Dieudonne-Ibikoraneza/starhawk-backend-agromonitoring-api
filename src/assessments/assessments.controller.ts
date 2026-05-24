@@ -207,6 +207,23 @@ export class AssessmentsController {
     );
   }
 
+  @Post(':id/pdfs/:pdfType/process')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ASSESSOR)
+  @ApiOperation({ summary: 'Process uploaded drone PDF manually (Assessor only)' })
+  @ApiResponse({ status: 200 })
+  async processDronePdf(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Param('pdfType') pdfType: string,
+  ) {
+    return this.assessmentsService.processDroneAnalysis(
+      user.userId,
+      id,
+      pdfType,
+    );
+  }
+
   @Get(':id/pdfs')
   @ApiOperation({ summary: 'Get all uploaded PDFs for an assessment' })
   @ApiResponse({ status: 200 })
