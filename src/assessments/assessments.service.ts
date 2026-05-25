@@ -1125,4 +1125,84 @@ export class AssessmentsService {
 
     return updatedAssessment;
   }
+
+  /**
+   * Flag assessment for correction (Insurer only)
+   */
+  async flagAssessment(
+    insurerId: string,
+    assessmentId: string,
+    correctionReason: string,
+  ): Promise<any> {
+    const assessment = await this.assessmentsRepository.findById(assessmentId);
+    if (!assessment) {
+      throw new NotFoundException(`Assessment with ID ${assessmentId} not found`);
+    }
+
+    // Validate assessment belongs to insurer
+    if (!assessment.insurerId || this.extractId(assessment.insurerId) !== insurerId) {
+      throw new BadRequestException('Assessment does not belong to this insurer');
+    }
+
+    // Validate report is generated
+    if (!assessment.reportGenerated) {
+      throw new BadRequestException('Cannot flag assessment. Report has not been generated yet.');
+    }
+
+    // Validate assessment is in SUBMITTED status
+    if (assessment.status !== AssessmentStatus.SUBMITTED) {
+      throw new BadRequestException(
+        `Cannot flag assessment. Current status: ${assessment.status}. Only SUBMITTED assessments can be flagged.`,
+      );
+    }
+
+    // Update assessment status and store correction reason
+    const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
+      status: AssessmentStatus.NEEDS_CORRECTION,
+      reportText: assessment.reportText
+        ? `${assessment.reportText}\n\nCorrection Requested: ${correctionReason}`
+        : `Correction Requested: ${correctionReason}`,
+    });
+
+    // Notify farmer and assessor
+    try {
+      const farm = await this.farmsRepository.findById(this.extractId(assessment.farmId));
+      const farmer = farm
+        ? await this.usersRepository.findById(this.extractId(farm.farmerId))
+        : null;
+      const assessor = await this.usersRepository.findById(this.extractId(assessment.assessorId));
+
+      if (farmer) {
+        await this.emailService
+          .sendAssessmentCorrectionEmail(
+            farmer.email,
+            farmer.firstName,
+            farm?.name || 'Farm',
+            assessmentId,
+            correctionReason,
+          )
+          .catch(error => {
+            console.error(`Failed to send correction email to farmer: ${error.message}`);
+          });
+      }
+
+      if (assessor) {
+        await this.emailService
+          .sendAssessmentCorrectionEmail(
+            assessor.email,
+            assessor.firstName,
+            farm?.name || 'Farm',
+            assessmentId,
+            correctionReason,
+          )
+          .catch(error => {
+            console.error(`Failed to send correction email to assessor: ${error.message}`);
+          });
+      }
+    } catch (error) {
+      console.error(`Failed to send correction notifications: ${error.message}`);
+    }
+
+    return updatedAssessment;
+  }
 }

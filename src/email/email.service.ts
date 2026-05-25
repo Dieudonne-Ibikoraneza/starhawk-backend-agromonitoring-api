@@ -428,6 +428,29 @@ export class EmailService implements OnModuleInit {
   }
 
   /**
+   * Send assessment correction notification
+   */
+  async sendAssessmentCorrectionEmail(
+    email: string,
+    firstName: string,
+    farmName: string,
+    assessmentId: string,
+    correctionReason: string,
+  ): Promise<void> {
+    await this.sendEmailWithRetry({
+      to: email,
+      subject: 'Assessment Correction Needed - Starhawk Platform',
+      template: './assessment-correction',
+      context: {
+        firstName,
+        farmName,
+        assessmentId,
+        correctionReason,
+      },
+    });
+  }
+
+  /**
    * Send crop monitoring report notification to insurer
    */
   async sendMonitoringReportEmail(

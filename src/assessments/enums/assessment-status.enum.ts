@@ -5,5 +5,6 @@ export enum AssessmentStatus {
   SUBMITTED = 'SUBMITTED',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  NEEDS_CORRECTION = 'NEEDS_CORRECTION',
 }
 

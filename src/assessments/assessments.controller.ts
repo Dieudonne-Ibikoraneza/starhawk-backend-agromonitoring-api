@@ -35,6 +35,7 @@ import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { AssignAssessorDto } from './dto/assign-assessor.dto';
 import { RejectAssessmentDto } from './dto/reject-assessment.dto';
+import { FlagAssessmentDto } from './dto/flag-assessment.dto';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('Assessments')
@@ -274,6 +275,23 @@ export class AssessmentsController {
       user.userId,
       id,
       rejectDto.rejectionReason,
+    );
+  }
+
+  @Post(':id/flag')
+  @UseGuards(RolesGuard)
+  @Roles(Role.INSURER)
+  @ApiOperation({ summary: 'Flag assessment for correction (Insurer only)' })
+  @ApiResponse({ status: 200 })
+  async flagAssessment(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() flagDto: FlagAssessmentDto,
+  ) {
+    return this.assessmentsService.flagAssessment(
+      user.userId,
+      id,
+      flagDto.correctionReason,
     );
   }
 
