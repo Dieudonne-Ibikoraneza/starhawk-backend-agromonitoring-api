@@ -884,8 +884,8 @@ export class AssessmentsService {
       );
     }
 
-    // Check if report already generated
-    if (assessment.reportGenerated) {
+    // Check if report already generated and it's not being corrected
+    if (assessment.reportGenerated && assessment.status !== AssessmentStatus.NEEDS_CORRECTION) {
       throw new BadRequestException('Report has already been generated');
     }
 
