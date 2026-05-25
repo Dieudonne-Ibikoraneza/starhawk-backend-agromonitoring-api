@@ -1159,6 +1159,7 @@ export class AssessmentsService {
     // Update assessment status and store correction reason
     const updatedAssessment = await this.assessmentsRepository.update(assessmentId, {
       status: AssessmentStatus.NEEDS_CORRECTION,
+      correctionReason: correctionReason,
       reportText: assessment.reportText
         ? `${assessment.reportText}\n\nCorrection Requested: ${correctionReason}`
         : `Correction Requested: ${correctionReason}`,

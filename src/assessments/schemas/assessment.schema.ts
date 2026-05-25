@@ -46,6 +46,9 @@ export class Assessment {
   @Prop({ type: String })
   comprehensiveNotes?: string; // Comprehensive assessment notes
 
+  @Prop({ type: String })
+  correctionReason?: string; // Reason for flagging an assessment for correction
+
   @Prop({ type: Object })
   weatherData?: object; // Weather data from EOSDA
 
