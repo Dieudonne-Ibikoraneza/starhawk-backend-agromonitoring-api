@@ -6,6 +6,8 @@ export enum PolicyStatus {
   PENDING_ACCEPTANCE = 'PENDING_ACCEPTANCE',
   /** Farmer declined the pending offer; not in force. */
   DECLINED = 'DECLINED',
+  /** Farmer requested modifications to the policy. */
+  NEEDS_CORRECTION = 'NEEDS_CORRECTION',
   ACTIVE = 'ACTIVE',
   EXPIRED = 'EXPIRED',
   CANCELLED = 'CANCELLED',
@@ -32,6 +34,9 @@ export class Policy {
 
   @Prop({ type: String })
   coverageLevel?: string;
+
+  @Prop({ type: Number })
+  coverageAmount?: number;
 
   @Prop({ type: Number, required: true })
   premiumAmount: number;

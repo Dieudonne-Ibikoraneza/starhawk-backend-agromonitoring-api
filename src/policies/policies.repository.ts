@@ -22,7 +22,7 @@ export class PoliciesRepository {
       .findById(objectId)
       .populate('farmerId')
       .populate('farmId')
-      .populate('insurerId')
+      .populate({ path: 'insurerId', populate: { path: 'insurerProfile' } })
       .populate('assessmentId')
       .exec();
   }
@@ -39,7 +39,7 @@ export class PoliciesRepository {
         ],
       })
       .populate('farmId')
-      .populate('insurerId')
+      .populate({ path: 'insurerId', populate: { path: 'insurerProfile' } })
       .exec();
   }
 

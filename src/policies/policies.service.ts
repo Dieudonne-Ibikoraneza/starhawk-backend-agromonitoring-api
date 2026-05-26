@@ -11,6 +11,8 @@ import { FarmsRepository } from '../farms/farms.repository';
 import { UsersRepository } from '../users/users.repository';
 import { RiskScoringService } from '../assessments/services/risk-scoring.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 import { CreatePolicyDto } from './dto/create-policy.dto';
 import { FarmerRejectPolicyDto } from './dto/farmer-reject-policy.dto';
 import { PolicyStatus } from './schemas/policy.schema';
@@ -26,6 +28,7 @@ export class PoliciesService {
     private usersRepository: UsersRepository,
     private riskScoringService: RiskScoringService,
     private emailService: EmailService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async issuePolicy(insurerId: string, createDto: CreatePolicyDto) {
@@ -68,7 +71,10 @@ export class PoliciesService {
       throw new BadRequestException('This assessment does not belong to your insurer');
     }
 
-    if (assessment.status !== AssessmentStatus.APPROVED) {
+    if (
+      assessment.status !== AssessmentStatus.APPROVED &&
+      assessment.status !== AssessmentStatus.POLICY_ISSUED
+    ) {
       throw new BadRequestException(
         `Assessment must be approved by an insurer before a policy can be issued. Current status: ${assessment.status}`,
       );
@@ -100,15 +106,21 @@ export class PoliciesService {
       farm.area || 1,
     );
 
+    const coverageLevel = createDto.coverageLevel || 'STANDARD';
+    const coverageAmount = this.riskScoringService.calculateCoverageAmount(premiumAmount, coverageLevel);
+
     const policyNumber = this.policiesRepository.generatePolicyNumber();
 
     const policy = await this.policiesRepository.create({
-      farmerId: farm.farmerId as Types.ObjectId,
-      farmId: farm._id as any as Types.ObjectId,
+      farmerId: (typeof farm.farmerId === 'object' && (farm.farmerId as any)._id) 
+        ? (farm.farmerId as any)._id as Types.ObjectId 
+        : farm.farmerId as Types.ObjectId,
+      farmId: (farm as any)._id as Types.ObjectId,
       insurerId: new Types.ObjectId(insurerId),
-      assessmentId: assessment._id as any as Types.ObjectId,
+      assessmentId: (assessment as any)._id as Types.ObjectId,
       policyNumber,
-      coverageLevel: createDto.coverageLevel || 'STANDARD',
+      coverageLevel,
+      coverageAmount,
       premiumAmount,
       startDate: createDto.startDate,
       endDate: createDto.endDate,
@@ -116,11 +128,33 @@ export class PoliciesService {
       insurerAcknowledgedAt: new Date(),
     });
 
+    // Update assessment status to reflect that a policy has been issued
+    const assessmentIdStr = (assessment as any)._id 
+      ? (assessment as any)._id.toString() 
+      : (assessment as any).id;
+      
+    await this.assessmentsRepository.update(assessmentIdStr, {
+      status: AssessmentStatus.POLICY_ISSUED,
+    });
+
     // Farm becomes INSURED only after the farmer accepts (see farmerAcknowledgePolicy).
 
+    const farmerIdStr = (typeof farm.farmerId === 'object' && (farm.farmerId as any)._id)
+      ? (farm.farmerId as any)._id.toString()
+      : farm.farmerId.toString();
+
     // Notify farmer that a policy is awaiting their acceptance
+    await this.notificationsService.createNotification(
+      farmerIdStr,
+      'New Policy Offer',
+      `You have received a new insurance policy offer (${policyNumber}) for your farm ${farm.name}. Please review and accept or reject.`,
+      NotificationType.POLICY_OFFERED,
+      (policy as any)._id?.toString() || (policy as any).id,
+      'Policy'
+    );
+
     try {
-      const farmer = await this.usersRepository.findById(farm.farmerId.toString());
+      const farmer = await this.usersRepository.findById(farmerIdStr);
 
       if (farmer) {
         const startDateStr =
@@ -229,6 +263,42 @@ export class PoliciesService {
       status: PolicyStatus.DECLINED,
       farmerRejectedAt: new Date(),
       farmerRejectionReason: reason,
+    });
+  }
+
+  /**
+   * Farmer flags a pending policy for correction; records reason and sets status NEEDS_CORRECTION.
+   */
+  async farmerFlagPolicyForCorrection(farmerId: string, policyId: string, dto: FarmerRejectPolicyDto) {
+    const policy = await this.policiesRepository.findById(policyId);
+    if (!policy) {
+      throw new NotFoundException('Policy', policyId);
+    }
+
+    const policyFarmerId = this.normalizeRefId(policy.farmerId);
+    if (policyFarmerId !== farmerId) {
+      throw new ForbiddenException('This policy does not belong to you');
+    }
+
+    if (policy.status !== PolicyStatus.PENDING_ACCEPTANCE) {
+      throw new BadRequestException(
+        `This policy cannot be flagged for correction in its current status: ${policy.status}`,
+      );
+    }
+
+    if (policy.farmerAcknowledgedAt) {
+      throw new BadRequestException('You have already accepted this policy');
+    }
+
+    const reason = dto.reason.trim();
+    if (reason.length < 5) {
+      throw new BadRequestException('Please provide a reason of at least 5 characters.');
+    }
+
+    return this.policiesRepository.update(policyId, {
+      status: PolicyStatus.NEEDS_CORRECTION,
+      farmerRejectedAt: new Date(), // using same field to record the time
+      farmerRejectionReason: reason, // using same field to record the reason
     });
   }
 

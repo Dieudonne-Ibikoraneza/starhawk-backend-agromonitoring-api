@@ -8,6 +8,7 @@ import { AssessmentsModule } from '../assessments/assessments.module';
 import { FarmsModule } from '../farms/farms.module';
 import { EmailModule } from '../email/email.module';
 import { UsersModule } from '../users/users.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,10 +17,10 @@ import { UsersModule } from '../users/users.module';
     FarmsModule,
     EmailModule,
     UsersModule,
+    NotificationsModule,
   ],
   controllers: [PoliciesController],
   providers: [PoliciesService, PoliciesRepository],
   exports: [PoliciesService, PoliciesRepository],
 })
 export class PoliciesModule {}
-

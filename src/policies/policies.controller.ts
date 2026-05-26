@@ -66,6 +66,19 @@ export class PoliciesController {
     return this.policiesService.farmerRejectPolicy(user.userId, id, dto);
   }
 
+  @Post(':id/farmer-flag-correction')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER)
+  @ApiOperation({ summary: 'Farmer flags a pending policy for correction (requires reason)' })
+  @ApiResponse({ status: 200 })
+  async farmerFlagPolicyForCorrection(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() dto: FarmerRejectPolicyDto,
+  ) {
+    return this.policiesService.farmerFlagPolicyForCorrection(user.userId, id, dto);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get policy by ID (scoped to your role)' })
   @ApiResponse({ status: 200 })
