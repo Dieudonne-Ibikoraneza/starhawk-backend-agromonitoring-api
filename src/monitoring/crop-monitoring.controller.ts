@@ -94,19 +94,10 @@ export class CropMonitoringController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List crop monitoring records (role-based, parents only without nested cycles)' })
-  @ApiResponse({ status: 200, description: 'Role-based list of crop monitoring parents' })
-  async getMonitoringTasks(@CurrentUser() user: any) {
-    // ASSESSOR: See their monitoring tasks
-    if (user.role === Role.ASSESSOR) {
-      return this.cropMonitoringService.getAssessorMonitoringTasks(user.userId);
-    }
-    // INSURER: See monitoring for their policies
-    if (user.role === Role.INSURER) {
-      return this.cropMonitoringService.getInsurerMonitoringTasks(user.userId);
-    }
-    // ADMIN: See all (via specialized endpoint records/all, or maybe just return [] here)
-    return [];
+  @ApiOperation({ summary: 'List crop monitoring fields (only fields with active policies)' })
+  @ApiResponse({ status: 200, description: 'List of fields with their monitoring cycles count' })
+  async getMonitoringFields() {
+    return this.cropMonitoringService.getMonitoringFields();
   }
 
   @Get('records/all')
@@ -123,6 +114,19 @@ export class CropMonitoringController {
   @ApiResponse({ status: 200 })
   async getPolicyMonitoring(@Param('policyId', UuidValidationPipe) policyId: string) {
     return this.cropMonitoringService.getPolicyMonitoringRecords(policyId);
+  }
+
+  @Post(':id/process-drone-pdf')
+  @Roles(Role.ASSESSOR, Role.ADMIN)
+  @ApiOperation({ summary: 'Process an uploaded drone PDF to extract data' })
+  async processDronePdf(
+    @Param('id', UuidValidationPipe) id: string,
+    @Body('pdfType') pdfType: string,
+  ) {
+    if (!pdfType) {
+      throw new BadRequestException('pdfType is required');
+    }
+    return this.cropMonitoringService.processDronePdf(id, pdfType);
   }
 
   @Post(':id/upload-drone-pdf')

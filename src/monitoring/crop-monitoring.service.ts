@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Injectable, NotFoundException, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { CropMonitoringRepository } from './crop-monitoring.repository';
 import { PoliciesRepository } from '../policies/policies.repository';
 import { FarmsRepository } from '../farms/farms.repository';
@@ -379,6 +381,54 @@ export class CropMonitoringService {
   }
 
   /**
+   * Get monitoring cycle stats grouped by field (only fields with active policies)
+   */
+  async getMonitoringFields(): Promise<any[]> {
+    const activePolicies = await this.policiesRepository.findAll({ status: 'ACTIVE' });
+    const farmToPolicyMap = new Map<string, string>();
+    activePolicies.forEach(p => {
+      farmToPolicyMap.set(this.extractId(p.farmId), this.extractId(p._id as any));
+    });
+
+    const farmsData = await this.farmsRepository.findAll(0, 1000);
+    const farms = farmsData.items.filter(farm => farmToPolicyMap.has(this.extractId(farm._id as any)));
+
+    const stats = await Promise.all(
+      farms.map(async (farm) => {
+        const farmIdStr = this.extractId(farm._id as any);
+        const parent = await this.cropMonitoringRepository.findParentByFarmId(farmIdStr);
+        let cyclesCount = 0;
+          let completedCycles = 0;
+          let hasActiveCycle = false;
+          let cropMonitoringId = null;
+          
+          if (parent) {
+            const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id as any));
+            cyclesCount = cycles.length;
+            completedCycles = cycles.filter(c => c.status === 'COMPLETED').length;
+            hasActiveCycle = cycles.some(c => c.status === 'IN_PROGRESS');
+            cropMonitoringId = parent._id;
+          }
+
+          return {
+            farmId: farm._id,
+            policyId: farmToPolicyMap.get(farmIdStr),
+            name: farm.name || 'Unnamed Field',
+            location: farm.location,
+            cropType: farm.cropType,
+            hasMonitoring: !!parent,
+            hasActiveCycle,
+            completedCycles,
+            cyclesCount,
+            cropMonitoringId
+          };
+      })
+    );
+
+    return stats;
+  }
+
+  /**
    * Get all monitoring records for a policy
    */
   async getPolicyMonitoringRecords(policyId: string): Promise<any[]> {
@@ -527,27 +577,10 @@ export class CropMonitoringService {
     }
 
     const pdfUrl = `/uploads/drone-analysis/${filename}`;
-    const absoluteFilePath = path.resolve(filePath);
-
-    let droneAnalysisData = null;
-    try {
-      this.logger.log(`Calling drone analysis service for: ${absoluteFilePath}`);
-      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
-
-      if (analysisResult.success && analysisResult.extractedData) {
-        droneAnalysisData = analysisResult.extractedData;
-        this.logger.log('Successfully extracted drone data');
-      } else {
-        this.logger.warn(`Drone data extraction failed: ${analysisResult.error}`);
-      }
-    } catch (error: any) {
-      this.logger.error(`Failed to extract drone data: ${error.message}`);
-    }
 
     const newPdfEntry = {
       pdfType,
       pdfUrl,
-      droneAnalysisData,
       uploadedAt: new Date(),
     };
 
@@ -571,7 +604,7 @@ export class CropMonitoringService {
       monitoringId: cycleId,
       pdfType,
       pdfUrl,
-      droneAnalysisData,
+      droneAnalysisData: null,
       monitoring: this.attachRecommendation(formattedCycle, farm),
     };
   }
@@ -579,6 +612,81 @@ export class CropMonitoringService {
   /**
    * Get all uploaded PDFs for a monitoring cycle
    */
+  async processDronePdf(cycleId: string, pdfType: string) {
+    const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
+    if (!cycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
+    }
+
+    const parent = await this.cropMonitoringRepository.findParentById(this.extractId(cycle.cropMonitoringId));
+    if (!parent) {
+      throw new NotFoundException(`Parent monitoring not found for cycle ${cycleId}`);
+    }
+
+    if (cycle.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Cannot process PDF for a completed cycle');
+    }
+
+    const existingPdfs = cycle.droneAnalysisPdfs || [];
+    const pdfIndex = existingPdfs.findIndex((p: any) => p.pdfType === pdfType);
+    
+    if (pdfIndex === -1) {
+      throw new NotFoundException(`PDF of type ${pdfType} not found in this cycle`);
+    }
+
+    const pdfData = existingPdfs[pdfIndex];
+    if (pdfData.droneAnalysisData) {
+      throw new BadRequestException(`PDF of type ${pdfType} is already processed`);
+    }
+
+    const filename = pdfData.pdfUrl.split('/').pop() || '';
+    const filePath = path.join(process.cwd(), 'uploads', 'drone-analysis', filename);
+    const absoluteFilePath = path.resolve(filePath);
+
+    if (!fs.existsSync(absoluteFilePath)) {
+      throw new BadRequestException('PDF file not found on disk');
+    }
+
+    let droneAnalysisData = null;
+    try {
+      this.logger.log(`Calling drone analysis service for: ${absoluteFilePath}`);
+      const analysisResult = await this.droneAnalysisService.extractDroneData(absoluteFilePath);
+
+      if (analysisResult.success && analysisResult.extractedData) {
+        droneAnalysisData = analysisResult.extractedData;
+        this.logger.log('Successfully extracted drone data');
+      } else {
+        throw new BadRequestException(`Drone data extraction failed: ${analysisResult.error}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to extract drone data: ${error.message}`);
+      throw new BadRequestException(`Failed to process PDF: ${error.message}`);
+    }
+
+    existingPdfs[pdfIndex] = {
+      ...(typeof (pdfData as any).toObject === 'function' ? (pdfData as any).toObject() : pdfData),
+      droneAnalysisData,
+    };
+
+    const updatedCycle = await this.cropMonitoringRepository.updateCycle(cycleId, {
+      droneAnalysisPdfs: existingPdfs,
+    });
+
+    if (!updatedCycle) {
+      throw new NotFoundException(`Crop monitoring cycle with ID ${cycleId} not found`);
+    }
+
+    const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));
+    const formattedCycle = {
+      ...(updatedCycle.toObject?.() ?? updatedCycle),
+      policyId: parent.policyId,
+      farmId: parent.farmId,
+      assessorId: parent.assessorId,
+    };
+
+    return this.attachRecommendation(formattedCycle, farm);
+  }
+
   async getUploadedPdfs(cycleId: string): Promise<any> {
     const cycle = await this.cropMonitoringRepository.findCycleById(cycleId);
     if (!cycle) {
@@ -672,3 +780,4 @@ export class CropMonitoringService {
     };
   }
 }
+
