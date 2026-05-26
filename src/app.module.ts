@@ -21,6 +21,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { AdminModule } from './admin/admin.module';
 import { InsurerModule } from './insurer/insurer.module';
 import { AiInsightsModule } from './ai-insights/ai-insights.module';
+import { NotificationsModule } from './notifications/notifications.module';
 // Override DNS resolver to use Google DNS (Disabled as it may cause SIGABRT on Render)
 // dns.setServers(['8.8.8.8', '8.8.4.4']);
 
@@ -66,6 +67,7 @@ import { AiInsightsModule } from './ai-insights/ai-insights.module';
     AdminModule,
     InsurerModule,
     AiInsightsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
