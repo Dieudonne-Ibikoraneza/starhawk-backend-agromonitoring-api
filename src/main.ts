@@ -51,3 +51,5 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+// trigger restart

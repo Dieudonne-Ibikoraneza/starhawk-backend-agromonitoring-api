@@ -62,6 +62,16 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
+UserSchema.virtual('insurerProfile', {
+  ref: 'InsurerProfile',
+  localField: '_id',
+  foreignField: 'userId',
+  justOne: true
+});
+
+UserSchema.set('toJSON', { virtuals: true });
+UserSchema.set('toObject', { virtuals: true });
+
 // Indexes
 UserSchema.index({ role: 1 });
 UserSchema.index({ active: 1 });
