@@ -148,5 +148,12 @@ export class RiskScoringService {
 
     return Math.round(premium);
   }
+
+  calculateCoverageAmount(premiumAmount: number, coverageLevel: string): number {
+    // Determine coverage based on premium and level
+    if (coverageLevel === 'PREMIUM') return premiumAmount * 20;
+    if (coverageLevel === 'STANDARD') return premiumAmount * 15;
+    return premiumAmount * 10;
+  }
 }
 
