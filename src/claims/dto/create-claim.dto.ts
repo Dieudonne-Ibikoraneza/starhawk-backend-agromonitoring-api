@@ -45,10 +45,6 @@ export class CreateClaimDto {
   @IsString()
   eventDate?: string;
 
-  @ApiProperty({ required: false, description: 'Estimated loss amount' })
-  @IsOptional()
-  estimatedLoss?: any;
-
   @ApiProperty({
     required: false,
     enum: ClaimType,

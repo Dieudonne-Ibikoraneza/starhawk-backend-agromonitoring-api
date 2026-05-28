@@ -35,9 +35,6 @@ export class Claim {
   @Prop({ type: Date })
   lossEventDate?: Date;
 
-  @Prop({ type: Number })
-  estimatedLoss?: number;
-
   @Prop({ type: Date, default: Date.now })
   filedAt: Date;
 

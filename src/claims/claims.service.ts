@@ -112,7 +112,6 @@ export class ClaimsService {
       lossDescription: createDto.lossDescription || createDto.description,
       damagePhotos: uploadedPhotos,
       lossEventDate: createDto.lossEventDate || createDto.eventDate ? new Date(createDto.lossEventDate || createDto.eventDate!) : undefined,
-      estimatedLoss: typeof createDto.estimatedLoss !== 'undefined' && createDto.estimatedLoss !== null ? parseFloat(createDto.estimatedLoss) : undefined,
       status: ClaimStatus.FILED,
       assessorId: resolvedAssessorId ? new Types.ObjectId(resolvedAssessorId) : undefined,
     });
