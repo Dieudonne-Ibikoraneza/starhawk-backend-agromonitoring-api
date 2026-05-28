@@ -105,6 +105,11 @@ export class UpdateInsurerProfileDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  termsAndConditions?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   address?: string;
 
   @ApiProperty({ required: false })

@@ -67,6 +67,10 @@ export class Policy {
 
   @Prop({ type: String, trim: true })
   farmerRejectionReason?: string;
+
+  /** Standard terms and conditions captured at the time the policy was issued. */
+  @Prop({ type: String })
+  termsAndConditions?: string;
 }
 
 export const PolicySchema = SchemaFactory.createForClass(Policy);

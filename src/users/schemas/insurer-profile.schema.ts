@@ -62,6 +62,9 @@ export class InsurerProfile {
   @Prop({ type: [String] })
   specializations?: string[];
 
+  @Prop({ type: String })
+  termsAndConditions?: string;
+
   @Prop({ type: Object })
   socialMedia?: {
     twitter?: string;

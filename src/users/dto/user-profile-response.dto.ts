@@ -100,6 +100,9 @@ export class InsurerProfileDto {
     facebook?: string;
     instagram?: string;
   };
+
+  @ApiProperty()
+  termsAndConditions?: string;
 }
 
 export class UserProfileResponseDto {

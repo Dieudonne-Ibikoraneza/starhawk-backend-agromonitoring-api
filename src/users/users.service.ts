@@ -442,6 +442,7 @@ export class UsersService implements OnModuleInit {
             officialPhone: insurerProfile.officialPhone,
             specializations: insurerProfile.specializations,
             socialMedia: insurerProfile.socialMedia,
+            termsAndConditions: insurerProfile.termsAndConditions,
           };
         }
         break;

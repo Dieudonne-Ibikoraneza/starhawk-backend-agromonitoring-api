@@ -19,6 +19,8 @@ import { PolicyStatus } from './schemas/policy.schema';
 import { AssessmentStatus } from '../assessments/enums/assessment-status.enum';
 import { Role } from '../users/enums/role.enum';
 
+import { ProfilesRepository } from '../users/profiles.repository';
+
 @Injectable()
 export class PoliciesService {
   constructor(
@@ -26,6 +28,7 @@ export class PoliciesService {
     private assessmentsRepository: AssessmentsRepository,
     private farmsRepository: FarmsRepository,
     private usersRepository: UsersRepository,
+    private profilesRepository: ProfilesRepository,
     private riskScoringService: RiskScoringService,
     private emailService: EmailService,
     private notificationsService: NotificationsService,
@@ -111,6 +114,8 @@ export class PoliciesService {
 
     const policyNumber = this.policiesRepository.generatePolicyNumber();
 
+    const insurerProfile = await this.profilesRepository.findInsurerProfileByUserId(insurerId);
+
     const policy = await this.policiesRepository.create({
       farmerId: (typeof farm.farmerId === 'object' && (farm.farmerId as any)._id) 
         ? (farm.farmerId as any)._id as Types.ObjectId 
@@ -126,6 +131,7 @@ export class PoliciesService {
       endDate: createDto.endDate,
       status: PolicyStatus.PENDING_ACCEPTANCE,
       insurerAcknowledgedAt: new Date(),
+      termsAndConditions: insurerProfile?.termsAndConditions,
     });
 
     // Update assessment status to reflect that a policy has been issued
