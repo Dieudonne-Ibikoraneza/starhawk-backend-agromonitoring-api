@@ -779,5 +779,50 @@ export class ClaimsService {
       assessment: updatedAssessment,
     };
   }
+
+  async flagClaim(
+    insurerId: string,
+    claimId: string,
+    correctionReason: string,
+  ) {
+    const claim = await this.claimsRepository.findById(claimId);
+    if (!claim) {
+      throw new NotFoundException('Claim', claimId);
+    }
+
+    const policy = await this.policiesRepository.findById(
+      this.extractId(claim.policyId),
+    );
+    if (this.extractId(policy?.insurerId) !== insurerId) {
+      throw new BadRequestException('Claim does not belong to your insurer');
+    }
+
+    // Validate claim status is SUBMITTED
+    if (claim.status !== ClaimStatus.SUBMITTED) {
+      throw new BadRequestException(
+        `Cannot flag claim. Current status: ${claim.status}. Only SUBMITTED claims can be flagged for correction.`,
+      );
+    }
+
+    // Update claim status and store correction reason
+    const updatedClaim = await this.claimsRepository.update(claimId, {
+      status: ClaimStatus.NEEDS_CORRECTION,
+      correctionReason: correctionReason,
+    });
+
+    // Optionally update assessment reportText if it exists
+    if (claim.assessmentReportId) {
+      const assessment = await this.claimAssessmentsRepository.findById(this.extractId(claim.assessmentReportId));
+      if (assessment) {
+        await this.claimAssessmentsRepository.update(this.extractId(claim.assessmentReportId), {
+          reportText: assessment.reportText
+            ? `${assessment.reportText}\n\nCorrection Requested: ${correctionReason}`
+            : `Correction Requested: ${correctionReason}`,
+        });
+      }
+    }
+
+    return updatedClaim;
+  }
 }
 

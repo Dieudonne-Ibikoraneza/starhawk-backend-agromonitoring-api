@@ -55,6 +55,9 @@ export class Claim {
 
   @Prop({ type: String })
   rejectionReason?: string;
+
+  @Prop({ type: String })
+  correctionReason?: string;
 }
 
 export const ClaimSchema = SchemaFactory.createForClass(Claim);

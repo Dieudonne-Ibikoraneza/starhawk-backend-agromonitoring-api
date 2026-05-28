@@ -124,6 +124,19 @@ export class ClaimsController {
     return this.claimsService.rejectClaim(user.userId, id, rejectionReason);
   }
 
+  @Put(':id/flag')
+  @UseGuards(RolesGuard)
+  @Roles(Role.INSURER)
+  @ApiOperation({ summary: 'Flag claim for correction (Insurer only)' })
+  @ApiResponse({ status: 200 })
+  async flagClaim(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body('correctionReason') correctionReason: string,
+  ) {
+    return this.claimsService.flagClaim(user.userId, id, correctionReason);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get claim by ID' })
   @ApiResponse({ status: 200 })
