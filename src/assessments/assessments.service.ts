@@ -6,6 +6,8 @@ import { UsersRepository } from '../users/users.repository';
 import { ProfilesRepository } from '../users/profiles.repository';
 import { AgromonitoringService } from '../agromonitoring/agromonitoring.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 import { RiskScoringService } from './services/risk-scoring.service';
 import { DroneAnalysisService } from './services/drone-analysis.service';
 import { FarmLocationSyncService } from '../farms/services/farm-location-sync.service';
@@ -32,6 +34,7 @@ export class AssessmentsService {
     private profilesRepository: ProfilesRepository,
     private agromonitoringService: AgromonitoringService,
     private emailService: EmailService,
+    private notificationsService: NotificationsService,
     private riskScoringService: RiskScoringService,
     private droneAnalysisService: DroneAnalysisService,
     private farmLocationSync: FarmLocationSyncService,
@@ -949,7 +952,8 @@ export class AssessmentsService {
     // Notify insurer if assessment has an insurer
     if (assessment.insurerId) {
       try {
-        const insurer = await this.usersRepository.findById(assessment.insurerId.toString());
+        const insurerIdStr = this.extractId(assessment.insurerId);
+        const insurer = await this.usersRepository.findById(insurerIdStr);
         if (insurer) {
           const farmName = farm?.name || `Farm ${assessment.farmId}`;
 
@@ -963,6 +967,20 @@ export class AssessmentsService {
             )
             .catch(error => {
               console.error(`Failed to send report ready notification: ${error.message}`);
+            });
+            
+          // Send in-app notification
+          await this.notificationsService
+            .createNotification(
+              (insurer as any)._id.toString(),
+              'Assessment Submitted',
+              `An assessment for farm "${farmName}" has been submitted and is ready for your review.`,
+              NotificationType.GENERAL,
+              assessmentId,
+              'Assessment',
+            )
+            .catch(error => {
+              console.error(`Failed to send in-app notification to insurer: ${error.message}`);
             });
         }
       } catch (error) {
@@ -1025,6 +1043,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send approval email to farmer: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (farmer as any)._id.toString(),
+          'Assessment Approved',
+          `The assessment for farm "${farm?.name || 'Farm'}" has been approved.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send approval notification to farmer: ${error.message}`));
       }
 
       if (assessor) {
@@ -1038,6 +1065,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send approval email to assessor: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (assessor as any)._id.toString(),
+          'Assessment Approved',
+          `The assessment for farm "${farm?.name || 'Farm'}" has been approved.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send approval notification to assessor: ${error.message}`));
       }
     } catch (error) {
       console.error(`Failed to send approval notifications: ${error.message}`);
@@ -1104,6 +1140,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send rejection email to farmer: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (farmer as any)._id.toString(),
+          'Assessment Rejected',
+          `The assessment for farm "${farm?.name || 'Farm'}" was rejected.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send rejection notification to farmer: ${error.message}`));
       }
 
       if (assessor) {
@@ -1118,6 +1163,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send rejection email to assessor: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (assessor as any)._id.toString(),
+          'Assessment Rejected',
+          `The assessment for farm "${farm?.name || 'Farm'}" was rejected.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send rejection notification to assessor: ${error.message}`));
       }
     } catch (error) {
       console.error(`Failed to send rejection notifications: ${error.message}`);
@@ -1185,6 +1239,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send correction email to farmer: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (farmer as any)._id.toString(),
+          'Assessment Flagged for Correction',
+          `The assessment for farm "${farm?.name || 'Farm'}" needs correction.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send correction notification to farmer: ${error.message}`));
       }
 
       if (assessor) {
@@ -1199,6 +1262,15 @@ export class AssessmentsService {
           .catch(error => {
             console.error(`Failed to send correction email to assessor: ${error.message}`);
           });
+
+        await this.notificationsService.createNotification(
+          (assessor as any)._id.toString(),
+          'Assessment Flagged for Correction',
+          `The assessment for farm "${farm?.name || 'Farm'}" needs correction.`,
+          NotificationType.GENERAL,
+          assessmentId,
+          'Assessment',
+        ).catch(error => console.error(`Failed to send correction notification to assessor: ${error.message}`));
       }
     } catch (error) {
       console.error(`Failed to send correction notifications: ${error.message}`);

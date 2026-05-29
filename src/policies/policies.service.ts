@@ -4,7 +4,9 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { Types, Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { CropMonitoring, CropMonitoringDocument, CropMonitoringStatus } from '../monitoring/schemas/crop-monitoring.schema';
 import { PoliciesRepository } from './policies.repository';
 import { AssessmentsRepository } from '../assessments/assessments.repository';
 import { FarmsRepository } from '../farms/farms.repository';
@@ -24,6 +26,7 @@ import { ProfilesRepository } from '../users/profiles.repository';
 @Injectable()
 export class PoliciesService {
   constructor(
+    @InjectModel(CropMonitoring.name) private cropMonitoringModel: Model<CropMonitoringDocument>,
     private policiesRepository: PoliciesRepository,
     private assessmentsRepository: AssessmentsRepository,
     private farmsRepository: FarmsRepository,
@@ -192,6 +195,62 @@ export class PoliciesService {
     return policy;
   }
 
+  async revisePolicy(insurerId: string, policyId: string, updateDto: import('./dto/update-policy.dto').UpdatePolicyDto) {
+    const policy = await this.policiesRepository.findById(policyId);
+    if (!policy) {
+      throw new NotFoundException('Policy', policyId);
+    }
+    if (this.normalizeRefId(policy.insurerId) !== insurerId) {
+      throw new ForbiddenException('This policy does not belong to your insurer');
+    }
+
+    if (policy.status !== PolicyStatus.NEEDS_CORRECTION && policy.status !== PolicyStatus.PENDING_ACCEPTANCE && policy.status !== PolicyStatus.DECLINED) {
+      throw new BadRequestException('Cannot edit policy in current status: ' + policy.status);
+    }
+
+    const farmRef = policy.farmId as import('mongoose').Types.ObjectId | { _id?: import('mongoose').Types.ObjectId };
+    const farmOid = typeof farmRef === 'object' && farmRef !== null && '_id' in farmRef && farmRef._id ? farmRef._id.toString() : (farmRef as import('mongoose').Types.ObjectId).toString();
+
+    const farm = await this.farmsRepository.findById(farmOid);
+    if (!farm) throw new NotFoundException('Farm not found');
+    
+    const assessment = await this.assessmentsRepository.findById(this.normalizeRefId(policy.assessmentId));
+    
+    // Calculate new premium based on risk score and area
+    const riskScore = assessment?.riskScore || 50;
+    const premiumAmount = this.riskScoringService.calculatePremium(
+      riskScore,
+      farm.area || 1,
+    );
+
+    const coverageLevel = updateDto.coverageLevel || policy.coverageLevel || 'STANDARD';
+    const coverageAmount = this.riskScoringService.calculateCoverageAmount(premiumAmount, coverageLevel);
+
+    const updated = await this.policiesRepository.update(policyId, {
+      coverageLevel,
+      coverageAmount,
+      premiumAmount,
+      startDate: updateDto.startDate || policy.startDate,
+      endDate: updateDto.endDate || policy.endDate,
+      status: PolicyStatus.PENDING_ACCEPTANCE,
+      farmerRejectionReason: '', // clear rejection reason
+      farmerRejectedAt: null as any, // clear rejection date
+    });
+
+    // Notify farmer
+    const farmerIdStr = this.normalizeRefId(policy.farmerId);
+    await this.notificationsService.createNotification(
+      farmerIdStr,
+      'Policy Revised',
+      `Your insurance policy offer (${policy.policyNumber}) has been revised based on your feedback. Please review it again.`,
+      NotificationType.POLICY_OFFERED,
+      policyId,
+      'Policy'
+    ).catch(error => console.error(`Failed to send policy revised notification: ${error.message}`));
+
+    return updated;
+  }
+
   /**
    * Farmer accepts the policy; coverage becomes ACTIVE and the farm is marked INSURED.
    */
@@ -230,6 +289,41 @@ export class PoliciesService {
       status: 'INSURED' as any,
     });
 
+    await this.notificationsService.createNotification(
+      this.normalizeRefId(policy.insurerId),
+      'Policy Accepted',
+      `The farmer has accepted the policy offer (${policy.policyNumber}) and the farm is now insured.`,
+      NotificationType.GENERAL,
+      policyId,
+      'Policy'
+    ).catch(error => console.error(`Failed to send policy accepted notification to insurer: ${error.message}`));
+
+    if (policy.assessmentId) {
+      try {
+        const assessment = await this.assessmentsRepository.findById(this.normalizeRefId(policy.assessmentId));
+        if (assessment && assessment.assessorId) {
+          // Initialize a crop monitoring parent document so the assessor can start cycles immediately
+          await this.cropMonitoringModel.create({
+            policyId: policy._id,
+            farmId: farmRef,
+            assessorId: assessment.assessorId,
+            status: CropMonitoringStatus.IN_PROGRESS
+          }).catch(err => console.error("Failed to create crop monitoring parent:", err));
+
+          await this.notificationsService.createNotification(
+            this.normalizeRefId(assessment.assessorId),
+            'Monitoring Can Begin',
+            `The farmer has accepted the policy offer (${policy.policyNumber}) for farm ${farmOid}. You can now start monitoring cycles.`,
+            NotificationType.GENERAL,
+            policyId,
+            'Policy'
+          );
+        }
+      } catch (error) {
+        console.error(`Failed to send policy accepted notification to assessor: ${(error as Error).message}`);
+      }
+    }
+
     return this.policiesRepository.update(policyId, {
       farmerAcknowledgedAt: new Date(),
       status: PolicyStatus.ACTIVE,
@@ -264,6 +358,15 @@ export class PoliciesService {
     if (reason.length < 5) {
       throw new BadRequestException('Please provide a reason of at least 5 characters.');
     }
+
+    await this.notificationsService.createNotification(
+      this.normalizeRefId(policy.insurerId),
+      'Policy Declined',
+      `The farmer has declined the policy offer (${policy.policyNumber}). Reason: ${reason}`,
+      NotificationType.GENERAL,
+      policyId,
+      'Policy'
+    ).catch(error => console.error(`Failed to send policy declined notification: ${error.message}`));
 
     return this.policiesRepository.update(policyId, {
       status: PolicyStatus.DECLINED,
@@ -300,6 +403,15 @@ export class PoliciesService {
     if (reason.length < 5) {
       throw new BadRequestException('Please provide a reason of at least 5 characters.');
     }
+
+    await this.notificationsService.createNotification(
+      this.normalizeRefId(policy.insurerId),
+      'Policy Flagged for Correction',
+      `The farmer has flagged the policy offer (${policy.policyNumber}) for correction. Reason: ${reason}`,
+      NotificationType.GENERAL,
+      policyId,
+      'Policy'
+    ).catch(error => console.error(`Failed to send policy flagged notification: ${error.message}`));
 
     return this.policiesRepository.update(policyId, {
       status: PolicyStatus.NEEDS_CORRECTION,

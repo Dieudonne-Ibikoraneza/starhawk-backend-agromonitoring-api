@@ -11,6 +11,7 @@ import { FarmsModule } from '../farms/farms.module';
 import { UsersModule } from '../users/users.module';
 import { AgromonitoringModule } from '../agromonitoring/agromonitoring.module';
 import { EmailModule } from '../email/email.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { EmailModule } from '../email/email.module';
     UsersModule,
     AgromonitoringModule,
     EmailModule,
+    NotificationsModule,
   ],
   controllers: [AssessmentsController],
   providers: [

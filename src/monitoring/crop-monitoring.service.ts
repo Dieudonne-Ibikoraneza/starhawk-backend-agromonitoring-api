@@ -401,6 +401,7 @@ export class CropMonitoringService {
           let completedCycles = 0;
           let hasActiveCycle = false;
           let cropMonitoringId = null;
+          let lastMonitoringDate = null;
           
           if (parent) {
             const cycles = await this.cropMonitoringRepository.findCyclesByParentId(this.extractId(parent._id as any));
@@ -408,6 +409,11 @@ export class CropMonitoringService {
             completedCycles = cycles.filter(c => c.status === 'COMPLETED').length;
             hasActiveCycle = cycles.some(c => c.status === 'IN_PROGRESS');
             cropMonitoringId = parent._id;
+            
+            if (cyclesCount > 0) {
+              const sortedCycles = [...cycles].sort((a: any, b: any) => b.monitoringNumber - a.monitoringNumber);
+              lastMonitoringDate = sortedCycles[0].monitoringDate;
+            }
           }
 
           return {
@@ -416,6 +422,8 @@ export class CropMonitoringService {
             name: farm.name || 'Unnamed Field',
             location: farm.location,
             cropType: farm.cropType,
+            sowingDate: farm.sowingDate,
+            lastMonitoringDate,
             hasMonitoring: !!parent,
             hasActiveCycle,
             completedCycles,
@@ -487,7 +495,29 @@ export class CropMonitoringService {
     }
 
     if (!parent) {
-      throw new NotFoundException('CropMonitoring', id);
+      // Check if ID is a farmId
+      parent = await this.cropMonitoringRepository.findParentByFarmId(id);
+    }
+
+    if (!parent) {
+      // If still no parent, check if a farm and policy exist for this ID
+      const farm = await this.farmsRepository.findById(id);
+      if (farm) {
+        const policies = await this.policiesRepository.findAll({ farmId: id });
+        const activePolicy = policies.find((p: any) => p.status === 'ACTIVE');
+        if (activePolicy) {
+          const mockParentObj = {
+            _id: id,
+            policyId: activePolicy._id,
+            farmId: farm._id,
+            assessorId: activePolicy.assessmentId,
+            monitoringCycles: [],
+            status: 'PENDING'
+          };
+          return this.attachRecommendation(mockParentObj, farm);
+        }
+      }
+      throw new NotFoundException('CropMonitoring or Farm with active policy', id);
     }
 
     const farm = await this.farmsRepository.findById(this.extractId(parent.farmId));

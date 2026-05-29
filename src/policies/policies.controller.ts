@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   UseGuards,
@@ -20,6 +21,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../users/enums/role.enum';
 import { CreatePolicyDto } from './dto/create-policy.dto';
 import { FarmerRejectPolicyDto } from './dto/farmer-reject-policy.dto';
+import { UpdatePolicyDto } from './dto/update-policy.dto';
 import { UuidValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('Policies')
@@ -39,6 +41,19 @@ export class PoliciesController {
     @Body() createDto: CreatePolicyDto,
   ) {
     return this.policiesService.issuePolicy(user.userId, createDto);
+  }
+
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.INSURER)
+  @ApiOperation({ summary: 'Revise policy (Insurer only)' })
+  @ApiResponse({ status: 200 })
+  async revisePolicy(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() updateDto: UpdatePolicyDto,
+  ) {
+    return this.policiesService.revisePolicy(user.userId, id, updateDto);
   }
 
   @Post(':id/farmer-acknowledge')
