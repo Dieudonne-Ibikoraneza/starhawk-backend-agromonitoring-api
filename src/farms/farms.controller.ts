@@ -362,6 +362,30 @@ export class FarmsController {
     return this.farmsService.registerWithAgromonitoring(id);
   }
 
+  @Post(':id/renew')
+  @UseGuards(RolesGuard)
+  @Roles(Role.FARMER)
+  @ApiOperation({
+    summary: 'Start a new crop cycle on an existing farm',
+    description: 'Archives the old farm and creates a new one with the same boundaries but new crop type and sowing date',
+  })
+  @ApiResponse({ status: 201, type: FarmResponseDto })
+  async renewFarmCycle(
+    @CurrentUser() user: any,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() renewData: { cropType: string; sowingDate: string },
+  ): Promise<FarmResponseDto> {
+    if (!renewData.cropType || !renewData.sowingDate) {
+      throw new BadRequestException('Crop type and sowing date are required');
+    }
+    return this.farmsService.renewFarmCycle(
+      user.userId,
+      id,
+      renewData.cropType,
+      renewData.sowingDate,
+    );
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Update farm' })
   @ApiResponse({ status: 200, type: FarmResponseDto })

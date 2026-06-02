@@ -1091,4 +1091,66 @@ export class FarmsService {
     if (id instanceof Types.ObjectId) return id.toString();
     return id._id ? id._id.toString() : id.toString();
   }
+
+  /**
+   * Renew farm cycle by creating a new Farm entity with the same boundary
+   */
+  async renewFarmCycle(
+    userId: string,
+    farmId: string,
+    newCropType: any,
+    newSowingDateStr: string,
+  ): Promise<FarmResponseDto> {
+    const oldFarm = await this.farmsRepository.findById(farmId);
+    if (!oldFarm) {
+      throw new NotFoundException('Farm', farmId);
+    }
+
+    const oldFarmerId = this.extractId(oldFarm.farmerId);
+    if (oldFarmerId !== userId) {
+      throw new ForbiddenException('You do not have permission to renew this farm');
+    }
+
+    // Validate sowing date
+    const dateParts = newSowingDateStr.split('-').map(Number);
+    if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+      throw new BadRequestException('Invalid sowing date format');
+    }
+
+    const newSowingDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], 0, 0, 0, 0));
+    if (isNaN(newSowingDate.getTime())) {
+      throw new BadRequestException('Invalid sowing date format');
+    }
+
+    // Mark old farm as ARCHIVED
+    await this.farmsRepository.update(farmId, { status: FarmStatus.ARCHIVED });
+
+    // Create new farm with old physical boundaries
+    const farmData = {
+      farmerId: new Types.ObjectId(userId),
+      name: oldFarm.name,
+      area: oldFarm.area,
+      cropType: newCropType,
+      sowingDate: newSowingDate,
+      location: oldFarm.location,
+      locationName: oldFarm.locationName,
+      boundary: oldFarm.boundary,
+      status: FarmStatus.REGISTERED, // Jump straight to registered since we have boundaries
+      shapefilePath: oldFarm.shapefilePath,
+    };
+
+    const newFarm = await this.farmsRepository.create(farmData);
+
+    // Register with agromonitoring to get a fresh eosdaFieldId
+    if (newFarm.boundary) {
+      try {
+        await this.registerWithAgromonitoring((newFarm as any)._id.toString());
+      } catch (err: any) {
+        this.logger.error(`Agromonitoring registration failed during renewal for farm ${newFarm._id}: ${err.message}`);
+      }
+    }
+
+    const completedFarm = await this.farmsRepository.findById((newFarm as any)._id.toString());
+    return this.mapToFarmResponse(completedFarm || newFarm);
+  }
 }

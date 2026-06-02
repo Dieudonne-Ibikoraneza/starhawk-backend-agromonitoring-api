@@ -3,5 +3,6 @@ export enum FarmStatus {
   REGISTERED = 'REGISTERED',
   INSURED = 'INSURED',
   REJECTED = 'REJECTED',
+  ARCHIVED = 'ARCHIVED',
 }
 
