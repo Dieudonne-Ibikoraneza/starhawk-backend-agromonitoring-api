@@ -6,7 +6,15 @@ import { ConfigService } from '@nestjs/config';
 import * as express from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create(AppModule, { 
+    bodyParser: false,
+    cors: {
+      origin: ['http://localhost:1111', 'http://localhost:5173', 'http://localhost:3000'],
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      credentials: true,
+      optionsSuccessStatus: 204,
+    }
+  });
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   const configService = app.get(ConfigService);
@@ -26,12 +34,7 @@ async function bootstrap() {
     }),
   );
 
-  // CORS configuration
-  const corsOrigin = configService.get<string>('CORS_ORIGIN', '*');
-  app.enableCors({
-    origin: corsOrigin === '*' ? true : corsOrigin.split(','),
-    credentials: true,
-  });
+
 
   // Swagger documentation
   const config = new DocumentBuilder()
