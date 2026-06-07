@@ -19,6 +19,7 @@ import { Role } from './enums/role.enum';
 import { UserStatus } from './enums/user-status.enum';
 import { UserDocument } from './schemas/user.schema';
 import { PhotosService } from '../photos/photos.service';
+import { PhotoType } from '../photos/enums/photo-type.enum';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -359,6 +360,25 @@ export class UsersService implements OnModuleInit {
     return this.getProfile(userId);
   }
 
+  async uploadSignature(userId: string, base64Signature: string): Promise<{ url: string }> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Upload to Supabase using PhotosService
+    const { id } = await this.photosService.uploadBase64Photo(
+      base64Signature,
+      PhotoType.SIGNATURE,
+      userId,
+    );
+
+    // Save signature URL (using photo ID for secure blob access)
+    await this.usersRepository.update(userId, { signatureUrl: id } as any);
+
+    return { url: id };
+  }
+
   private async mapToUserProfileResponse(
     user: UserDocument,
   ): Promise<UserProfileResponseDto> {
@@ -379,6 +399,7 @@ export class UsersService implements OnModuleInit {
       cell: user.cell,
       village: user.village,
       sex: user.sex,
+      signatureUrl: user.signatureUrl,
       createdAt: userDoc.createdAt,
       updatedAt: userDoc.updatedAt,
     };
