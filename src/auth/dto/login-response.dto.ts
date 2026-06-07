@@ -18,5 +18,8 @@ export class LoginResponseDto {
 
   @ApiProperty()
   firstLoginRequired: boolean;
+
+  @ApiProperty({ required: false })
+  signatureUrl?: string;
 }
 

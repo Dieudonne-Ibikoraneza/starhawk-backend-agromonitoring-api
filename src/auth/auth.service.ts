@@ -47,6 +47,7 @@ export class AuthService {
       email: user.email,
       phoneNumber: user.phoneNumber,
       firstLoginRequired: user.firstLoginRequired,
+      signatureUrl: user.signatureUrl,
     };
   }
 
