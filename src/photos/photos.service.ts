@@ -264,6 +264,30 @@ export class PhotosService {
     await this.deleteFromStorage(photo);
   }
 
+  async downloadPhoto(id: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const photo = await this.photosRepository.findById(id);
+    if (!photo) {
+      throw new BadRequestException('Photo not found');
+    }
+    
+    // Extract filename from URL
+    const urlParts = photo.url.split('/');
+    const filename = urlParts.slice(-2).join('/'); // type/filename.ext
+
+    const { data, error } = await this.supabase.storage
+      .from(this.bucket)
+      .download(filename);
+
+    if (error || !data) {
+      throw new BadRequestException(`Failed to download from Supabase: ${error?.message}`);
+    }
+
+    const arrayBuffer = await data.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    return { buffer, mimeType: photo.mimeType || 'application/octet-stream' };
+  }
+
   /**
    * Delete all photos associated with an entity (used for account deletion)
    */

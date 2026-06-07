@@ -3,5 +3,6 @@ export enum PhotoType {
   CLAIM = 'CLAIM',
   PROFILE = 'PROFILE',
   LOGO = 'LOGO',
+  SIGNATURE = 'SIGNATURE',
 }
 
