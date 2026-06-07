@@ -58,6 +58,9 @@ export class User {
 
   @Prop()
   sex?: string;
+
+  @Prop()
+  signatureUrl?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

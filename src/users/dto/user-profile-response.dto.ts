@@ -152,6 +152,9 @@ export class UserProfileResponseDto {
   sex?: string;
 
   @ApiProperty({ required: false })
+  signatureUrl?: string;
+
+  @ApiProperty({ required: false })
   farmerProfile?: FarmerProfileDto;
 
   @ApiProperty({ required: false })
