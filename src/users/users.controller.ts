@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -146,6 +147,19 @@ export class UsersController {
       user.role,
       profileData,
     );
+  }
+
+  @Post('profile/signature')
+  @ApiOperation({ summary: 'Upload signature for profile' })
+  @ApiResponse({ status: 200 })
+  async uploadSignature(
+    @CurrentUser() user: any,
+    @Body('signature') signature: string,
+  ) {
+    if (!signature) {
+      throw new BadRequestException('Signature is required');
+    }
+    return this.usersService.uploadSignature(user.userId, signature);
   }
 
   @Put(':id')

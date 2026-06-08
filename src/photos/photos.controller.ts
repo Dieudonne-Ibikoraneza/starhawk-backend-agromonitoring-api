@@ -8,7 +8,9 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -59,6 +61,14 @@ export class PhotosController {
   async getPhoto(@Param('id', UuidValidationPipe) id: string) {
     const url = await this.photosService.getPhotoUrl(id);
     return { url };
+  }
+
+  @Get('blob/:id')
+  @ApiOperation({ summary: 'Download photo as blob stream' })
+  async downloadPhoto(@Param('id', UuidValidationPipe) id: string, @Res() res: Response) {
+    const { buffer, mimeType } = await this.photosService.downloadPhoto(id);
+    res.setHeader('Content-Type', mimeType);
+    res.send(buffer);
   }
 
   @Get('entity/:entityId')
