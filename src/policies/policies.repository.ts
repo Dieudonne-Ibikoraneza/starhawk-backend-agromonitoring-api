@@ -56,6 +56,7 @@ export class PoliciesRepository {
       })
       .populate('farmerId')
       .populate('farmId')
+      .populate({ path: 'insurerId', populate: { path: 'insurerProfile' } })
       .exec();
   }
 
@@ -64,6 +65,7 @@ export class PoliciesRepository {
       .findOne({ policyNumber })
       .populate('farmerId')
       .populate('farmId')
+      .populate({ path: 'insurerId', populate: { path: 'insurerProfile' } })
       .exec();
   }
 
@@ -72,6 +74,7 @@ export class PoliciesRepository {
       .find(filters || {})
       .populate('farmerId')
       .populate('farmId')
+      .populate({ path: 'insurerId', populate: { path: 'insurerProfile' } })
       .exec();
   }
 
