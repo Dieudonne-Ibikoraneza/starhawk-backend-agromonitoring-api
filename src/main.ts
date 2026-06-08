@@ -9,7 +9,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { 
     bodyParser: false,
     cors: {
-      origin: ['http://localhost:1111', 'http://localhost:5173', 'http://localhost:3000'],
+      origin: [
+        'http://localhost:1111', 
+        'http://localhost:5173', 
+        'http://localhost:3000',
+        /localhost/i,
+        /127\.0\.0\.1/,
+        /starhawk/i
+      ],
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
       credentials: true,
       optionsSuccessStatus: 204,
