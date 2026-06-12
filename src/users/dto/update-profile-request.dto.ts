@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsNumber, IsDate } from 'class-validator';
 import { Type } from 'class-transformer';
+import { GovernmentProfileDto, UpdateGovernmentProfileDto } from './government-profile.dto';
 
 export class UpdateFarmerProfileDto {
   @ApiProperty({ required: false })
@@ -192,4 +193,6 @@ export class UpdateInsurerProfileDto {
     instagram?: string;
   };
 }
+
+export { GovernmentProfileDto, UpdateGovernmentProfileDto };
 

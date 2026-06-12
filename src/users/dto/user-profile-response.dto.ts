@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Role } from '../enums/role.enum';
+import { GovernmentProfileDto } from './government-profile.dto';
 
 export class FarmerProfileDto {
   @ApiProperty()
@@ -162,6 +163,9 @@ export class UserProfileResponseDto {
 
   @ApiProperty({ required: false })
   insurerProfile?: InsurerProfileDto;
+
+  @ApiProperty({ required: false })
+  governmentProfile?: GovernmentProfileDto;
 
   @ApiProperty()
   createdAt: Date;

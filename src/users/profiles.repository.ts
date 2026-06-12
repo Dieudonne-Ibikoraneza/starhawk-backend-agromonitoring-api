@@ -7,6 +7,10 @@ import {
   AssessorProfileDocument,
 } from './schemas/assessor-profile.schema';
 import {
+  GovernmentProfile,
+  GovernmentProfileDocument,
+} from './schemas/government-profile.schema';
+import {
   InsurerProfile,
   InsurerProfileDocument,
 } from './schemas/insurer-profile.schema';
@@ -18,9 +22,27 @@ export class ProfilesRepository {
     private farmerProfileModel: Model<FarmerProfileDocument>,
     @InjectModel(AssessorProfile.name)
     private assessorProfileModel: Model<AssessorProfileDocument>,
+    @InjectModel(GovernmentProfile.name)
+    private governmentProfileModel: Model<GovernmentProfileDocument>,
     @InjectModel(InsurerProfile.name)
     private insurerProfileModel: Model<InsurerProfileDocument>,
   ) {}
+
+  private normalizeGovernmentProfileData(
+    profileData: Partial<GovernmentProfile>,
+  ): Partial<GovernmentProfile> {
+    const normalized = { ...profileData };
+    if (
+      normalized.parentGovernmentUserId &&
+      typeof normalized.parentGovernmentUserId === 'string' &&
+      Types.ObjectId.isValid(normalized.parentGovernmentUserId)
+    ) {
+      normalized.parentGovernmentUserId = new Types.ObjectId(
+        normalized.parentGovernmentUserId,
+      );
+    }
+    return normalized;
+  }
 
   // Farmer Profile
   async createFarmerProfile(
@@ -88,6 +110,37 @@ export class ProfilesRepository {
       .exec();
   }
 
+  // Government Profile
+  async createGovernmentProfile(
+    userId: string,
+    profileData: Partial<GovernmentProfile>,
+  ): Promise<GovernmentProfileDocument> {
+    const profile = new this.governmentProfileModel({
+      ...this.normalizeGovernmentProfileData(profileData),
+      userId,
+    });
+    return profile.save();
+  }
+
+  async findGovernmentProfileByUserId(
+    userId: string,
+  ): Promise<GovernmentProfileDocument | null> {
+    return this.governmentProfileModel.findOne({ userId }).exec();
+  }
+
+  async updateGovernmentProfile(
+    userId: string,
+    updateData: Partial<GovernmentProfile>,
+  ): Promise<GovernmentProfileDocument | null> {
+    return this.governmentProfileModel
+      .findOneAndUpdate(
+        { userId },
+        this.normalizeGovernmentProfileData(updateData),
+        { new: true },
+      )
+      .exec();
+  }
+
   // Insurer Profile
   async createInsurerProfile(
     userId: string,
@@ -122,6 +175,10 @@ export class ProfilesRepository {
 
   async deleteAssessorProfile(userId: string): Promise<void> {
     await this.assessorProfileModel.deleteOne({ userId }).exec();
+  }
+
+  async deleteGovernmentProfile(userId: string): Promise<void> {
+    await this.governmentProfileModel.deleteOne({ userId }).exec();
   }
 
   async deleteInsurerProfile(userId: string): Promise<void> {

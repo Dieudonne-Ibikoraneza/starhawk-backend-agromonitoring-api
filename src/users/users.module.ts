@@ -11,6 +11,10 @@ import {
   AssessorProfileSchema,
 } from './schemas/assessor-profile.schema';
 import {
+  GovernmentProfile,
+  GovernmentProfileSchema,
+} from './schemas/government-profile.schema';
+import {
   InsurerProfile,
   InsurerProfileSchema,
 } from './schemas/insurer-profile.schema';
@@ -25,6 +29,7 @@ import { PhotosModule } from '../photos/photos.module';
       { name: User.name, schema: UserSchema },
       { name: FarmerProfile.name, schema: FarmerProfileSchema },
       { name: AssessorProfile.name, schema: AssessorProfileSchema },
+      { name: GovernmentProfile.name, schema: GovernmentProfileSchema },
       { name: InsurerProfile.name, schema: InsurerProfileSchema },
     ]),
     forwardRef(() => AuthModule),

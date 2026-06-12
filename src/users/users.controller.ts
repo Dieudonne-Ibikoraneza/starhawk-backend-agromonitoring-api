@@ -32,6 +32,7 @@ import {
   UpdateFarmerProfileDto,
   UpdateAssessorProfileDto,
   UpdateInsurerProfileDto,
+  UpdateGovernmentProfileDto,
 } from './dto/update-profile-request.dto';
 
 @ApiTags('Users')
@@ -100,8 +101,26 @@ export class UsersController {
     @Query('size', new DefaultValuePipe(10), ParseIntPipe) size: number,
     @Query('sortBy', new DefaultValuePipe('createdAt')) sortBy: string,
     @Query('sortDirection', new DefaultValuePipe('desc')) sortDirection: 'asc' | 'desc',
-  ) {
+    ) {
     return this.usersService.findAllInsurers(page, size, sortBy, sortDirection);
+  }
+
+  @Get('government')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'List all government staff (Admin only)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'size', required: false, type: Number })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDirection', required: false, enum: ['asc', 'desc'] })
+  @ApiResponse({ status: 200 })
+  async findAllGovernment(
+    @Query('page', new DefaultValuePipe(0), ParseIntPipe) page: number,
+    @Query('size', new DefaultValuePipe(10), ParseIntPipe) size: number,
+    @Query('sortBy', new DefaultValuePipe('createdAt')) sortBy: string,
+    @Query('sortDirection', new DefaultValuePipe('desc')) sortDirection: 'asc' | 'desc',
+  ) {
+    return this.usersService.findAllGovernment(page, size, sortBy, sortDirection);
   }
 
   @Get('profile')
@@ -140,7 +159,8 @@ export class UsersController {
     profileData:
       | UpdateFarmerProfileDto
       | UpdateAssessorProfileDto
-      | UpdateInsurerProfileDto,
+      | UpdateInsurerProfileDto
+      | UpdateGovernmentProfileDto,
   ): Promise<UserProfileResponseDto> {
     return this.usersService.updateProfile(
       user.userId,

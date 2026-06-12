@@ -2,6 +2,7 @@ import {
   Injectable,
   OnModuleInit,
   ConflictException,
+  BadRequestException,
   NotFoundException,
   forwardRef,
   Inject,
@@ -15,8 +16,10 @@ import { EmailService } from '../email/email.service';
 import { RegisterRequestDto } from './dto/register-request.dto';
 import { UpdateUserRequestDto } from './dto/update-user-request.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
+import { GovernmentProfileDto } from './dto/government-profile.dto';
 import { Role } from './enums/role.enum';
 import { UserStatus } from './enums/user-status.enum';
+import { GovernmentLevel } from './enums/government-level.enum';
 import { UserDocument } from './schemas/user.schema';
 import { PhotosService } from '../photos/photos.service';
 import { PhotoType } from '../photos/enums/photo-type.enum';
@@ -134,6 +137,16 @@ export class UsersService implements OnModuleInit {
 
     const nidaData = nidaResponse.data;
 
+    if (registerDto.role === Role.GOVERNMENT) {
+      if (!registerDto.governmentProfile) {
+        throw new BadRequestException(
+          'Government profile details are required for government users',
+        );
+      }
+
+      this.validateGovernmentProfile(registerDto.governmentProfile);
+    }
+
     // Generate secure random password for the user
     const randomPassword = this.passwordService.generateSecurePassword();
     const hashedPassword = await this.passwordService.hashPassword(
@@ -144,6 +157,8 @@ export class UsersService implements OnModuleInit {
     const sex = nidaData.sex === '7' ? 'Female' : 'Male';
 
     // Create user with NIDA data
+    const isGovernment = registerDto.role === Role.GOVERNMENT;
+
     const userData = {
       email: registerDto.email,
       phoneNumber: registerDto.phoneNumber,
@@ -154,19 +169,23 @@ export class UsersService implements OnModuleInit {
       lastName: nidaData.surnames,
       role: registerDto.role,
       active: true,
-      firstLoginRequired: registerDto.role === Role.INSURER,
       province: nidaData.province,
       district: nidaData.district,
       sector: nidaData.sector,
       cell: nidaData.cell,
       village: nidaData.village,
       sex,
+      firstLoginRequired: registerDto.role === Role.INSURER || isGovernment,
     };
 
     const user = await this.usersRepository.create(userData);
 
     // Create role-specific profile
-    await this.createRoleProfile((user as any)._id.toString(), registerDto.role);
+    await this.createRoleProfile(
+      (user as any)._id.toString(),
+      registerDto.role,
+      registerDto.governmentProfile,
+    );
 
     // Send welcome email with random password (non-blocking)
     this.emailService
@@ -185,7 +204,11 @@ export class UsersService implements OnModuleInit {
     return this.mapToUserProfileResponse(user);
   }
 
-  private async createRoleProfile(userId: string, role: Role): Promise<void> {
+  private async createRoleProfile(
+    userId: string,
+    role: Role,
+    governmentProfile?: GovernmentProfileDto,
+  ): Promise<void> {
     switch (role) {
       case Role.FARMER:
         await this.profilesRepository.createFarmerProfile(userId, {});
@@ -196,7 +219,72 @@ export class UsersService implements OnModuleInit {
       case Role.INSURER:
         await this.profilesRepository.createInsurerProfile(userId, {});
         break;
-      // ADMIN and GOVERNMENT don't have profiles
+      case Role.GOVERNMENT: {
+        await this.profilesRepository.createGovernmentProfile(userId, {
+          ...governmentProfile!,
+          hierarchyPath: this.buildGovernmentHierarchyPath(governmentProfile!),
+        } as any);
+        break;
+      }
+      // ADMIN doesn't have a profile
+    }
+  }
+
+  private buildGovernmentHierarchyPath(profile: GovernmentProfileDto): string {
+    return [profile.province, profile.district, profile.sector, profile.cell, profile.village]
+      .filter((item): item is string => Boolean(item))
+      .join(' / ');
+  }
+
+  private validateGovernmentProfile(profile: GovernmentProfileDto): void {
+    if (!profile.level) {
+      throw new BadRequestException('Government level is required');
+    }
+
+    if (!profile.title?.trim()) {
+      throw new BadRequestException('Government title is required');
+    }
+
+    const missingFields: string[] = [];
+
+    if (profile.level !== GovernmentLevel.COUNTRY && !profile.province) {
+      missingFields.push('province');
+    }
+    if (
+      [
+        GovernmentLevel.DISTRICT,
+        GovernmentLevel.SECTOR,
+        GovernmentLevel.CELL,
+        GovernmentLevel.VILLAGE,
+      ].includes(profile.level) &&
+      !profile.district
+    ) {
+      missingFields.push('district');
+    }
+    if (
+      [
+        GovernmentLevel.SECTOR,
+        GovernmentLevel.CELL,
+        GovernmentLevel.VILLAGE,
+      ].includes(profile.level) &&
+      !profile.sector
+    ) {
+      missingFields.push('sector');
+    }
+    if (
+      [GovernmentLevel.CELL, GovernmentLevel.VILLAGE].includes(profile.level) &&
+      !profile.cell
+    ) {
+      missingFields.push('cell');
+    }
+    if (profile.level === GovernmentLevel.VILLAGE && !profile.village) {
+      missingFields.push('village');
+    }
+
+    if (missingFields.length > 0) {
+      throw new BadRequestException(
+        `Government profile is missing required fields for ${profile.level.toLowerCase()} level: ${missingFields.join(', ')}`,
+      );
     }
   }
 
@@ -249,6 +337,30 @@ export class UsersService implements OnModuleInit {
     );
 
     // Map each insurer to include their profile
+    const items = await Promise.all(
+      result.items.map((user) => this.mapToUserProfileResponse(user)),
+    );
+
+    return {
+      ...result,
+      items,
+    };
+  }
+
+  async findAllGovernment(
+    page: number = 0,
+    limit: number = 10,
+    sortBy: string = 'createdAt',
+    sortDirection: 'asc' | 'desc' = 'desc',
+  ) {
+    const result = await this.usersRepository.findByRole(
+      Role.GOVERNMENT,
+      page,
+      limit,
+      sortBy,
+      sortDirection,
+    );
+
     const items = await Promise.all(
       result.items.map((user) => this.mapToUserProfileResponse(user)),
     );
@@ -349,6 +461,12 @@ export class UsersService implements OnModuleInit {
         break;
       case Role.INSURER:
         await this.profilesRepository.updateInsurerProfile(userId, profileData);
+        break;
+      case Role.GOVERNMENT:
+        await this.profilesRepository.updateGovernmentProfile(
+          userId,
+          profileData,
+        );
         break;
     }
 
@@ -467,6 +585,31 @@ export class UsersService implements OnModuleInit {
           };
         }
         break;
+      case Role.GOVERNMENT:
+        const governmentProfile =
+          await this.profilesRepository.findGovernmentProfileByUserId(
+            userDoc._id.toString(),
+          );
+        if (governmentProfile) {
+          response.governmentProfile = {
+            level: governmentProfile.level,
+            title: governmentProfile.title,
+            department: governmentProfile.department,
+            province: governmentProfile.province,
+            district: governmentProfile.district,
+            sector: governmentProfile.sector,
+            cell: governmentProfile.cell,
+            village: governmentProfile.village,
+            parentGovernmentUserId:
+              (governmentProfile.parentGovernmentUserId as any)?.toString?.() ||
+              (governmentProfile.parentGovernmentUserId as any) ||
+              undefined,
+            officeEmail: governmentProfile.officeEmail,
+            officePhone: governmentProfile.officePhone,
+            hierarchyPath: governmentProfile.hierarchyPath,
+          };
+        }
+        break;
     }
 
     return response;
@@ -501,7 +644,7 @@ export class UsersService implements OnModuleInit {
         await this.profilesRepository.deleteInsurerProfile(userId);
         break;
       case Role.GOVERNMENT:
-        // No specific profile for government yet, but included for completeness
+        await this.profilesRepository.deleteGovernmentProfile(userId);
         break;
     }
 

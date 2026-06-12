@@ -1,9 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsEmail, IsEnum } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsString,
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { Role } from '../enums/role.enum';
 import { ValidRwandaId } from '../../common/validation/valid-rwanda-id.decorator';
 import { ValidRwandanPhoneNumber } from '../../common/validation/valid-rwandan-phone-number.decorator';
 import { ValidEnum } from '../../common/validation/valid-enum.decorator';
+import { GovernmentProfileDto } from './government-profile.dto';
 
 export class RegisterRequestDto {
   @ApiProperty({
@@ -41,5 +50,14 @@ export class RegisterRequestDto {
   @IsEnum(Role)
   @ValidEnum(Role)
   role: Role;
+
+  @ApiPropertyOptional({
+    description: 'Government hierarchy details for government staff accounts',
+    type: GovernmentProfileDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GovernmentProfileDto)
+  governmentProfile?: GovernmentProfileDto;
 }
 
