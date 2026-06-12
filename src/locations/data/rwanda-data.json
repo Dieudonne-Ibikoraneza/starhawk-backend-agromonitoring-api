@@ -1,0 +1,88 @@
+{
+  "provinces": [
+    {
+      "id": "kigali",
+      "name": "City of Kigali",
+      "slug": "kigali",
+      "level": "province",
+      "children": [
+        { "id": "gasabo", "name": "Gasabo", "slug": "gasabo", "level": "district", "children": [] },
+        { "id": "kicukiro", "name": "Kicukiro", "slug": "kicukiro", "level": "district", "children": [] },
+        { "id": "nyarugenge", "name": "Nyarugenge", "slug": "nyarugenge", "level": "district", "children": [] }
+      ]
+    },
+    {
+      "id": "east",
+      "name": "Eastern Province",
+      "slug": "east",
+      "level": "province",
+      "children": [
+        { "id": "bugesera", "name": "Bugesera", "slug": "bugesera", "level": "district", "children": [] },
+        { "id": "gatsibo", "name": "Gatsibo", "slug": "gatsibo", "level": "district", "children": [] },
+        { "id": "kayonza", "name": "Kayonza", "slug": "kayonza", "level": "district", "children": [] },
+        { "id": "kirehe", "name": "Kirehe", "slug": "kirehe", "level": "district", "children": [] },
+        {
+          "id": "ngoma",
+          "name": "Ngoma",
+          "slug": "ngoma",
+          "level": "district",
+          "children": [
+            {
+              "id": "kibungo",
+              "name": "Kibungo",
+              "slug": "kibungo",
+              "level": "sector",
+              "children": []
+            }
+          ]
+        },
+        { "id": "nyagatare", "name": "Nyagatare", "slug": "nyagatare", "level": "district", "children": [] },
+        { "id": "rwamagana", "name": "Rwamagana", "slug": "rwamagana", "level": "district", "children": [] }
+      ]
+    },
+    {
+      "id": "north",
+      "name": "Northern Province",
+      "slug": "north",
+      "level": "province",
+      "children": [
+        { "id": "burera", "name": "Burera", "slug": "burera", "level": "district", "children": [] },
+        { "id": "gakenke", "name": "Gakenke", "slug": "gakenke", "level": "district", "children": [] },
+        { "id": "gicumbi", "name": "Gicumbi", "slug": "gicumbi", "level": "district", "children": [] },
+        { "id": "musanze", "name": "Musanze", "slug": "musanze", "level": "district", "children": [] },
+        { "id": "rulindo", "name": "Rulindo", "slug": "rulindo", "level": "district", "children": [] }
+      ]
+    },
+    {
+      "id": "south",
+      "name": "Southern Province",
+      "slug": "south",
+      "level": "province",
+      "children": [
+        { "id": "gisagara", "name": "Gisagara", "slug": "gisagara", "level": "district", "children": [] },
+        { "id": "huye", "name": "Huye", "slug": "huye", "level": "district", "children": [] },
+        { "id": "kamonyi", "name": "Kamonyi", "slug": "kamonyi", "level": "district", "children": [] },
+        { "id": "muhanga", "name": "Muhanga", "slug": "muhanga", "level": "district", "children": [] },
+        { "id": "nyamagabe", "name": "Nyamagabe", "slug": "nyamagabe", "level": "district", "children": [] },
+        { "id": "nyanza", "name": "Nyanza", "slug": "nyanza", "level": "district", "children": [] },
+        { "id": "nyaruguru", "name": "Nyaruguru", "slug": "nyaruguru", "level": "district", "children": [] },
+        { "id": "ruhango", "name": "Ruhango", "slug": "ruhango", "level": "district", "children": [] }
+      ]
+    },
+    {
+      "id": "west",
+      "name": "Western Province",
+      "slug": "west",
+      "level": "province",
+      "children": [
+        { "id": "karongi", "name": "Karongi", "slug": "karongi", "level": "district", "children": [] },
+        { "id": "ngororero", "name": "Ngororero", "slug": "ngororero", "level": "district", "children": [] },
+        { "id": "nyabihu", "name": "Nyabihu", "slug": "nyabihu", "level": "district", "children": [] },
+        { "id": "nyamasheke", "name": "Nyamasheke", "slug": "nyamasheke", "level": "district", "children": [] },
+        { "id": "rubavu", "name": "Rubavu", "slug": "rubavu", "level": "district", "children": [] },
+        { "id": "rusizi", "name": "Rusizi", "slug": "rusizi", "level": "district", "children": [] },
+        { "id": "rutsiro", "name": "Rutsiro", "slug": "rutsiro", "level": "district", "children": [] }
+      ]
+    }
+  ]
+}
