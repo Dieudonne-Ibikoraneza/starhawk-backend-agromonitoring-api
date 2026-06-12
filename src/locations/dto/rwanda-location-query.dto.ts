@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString } from 'class-validator';
 
@@ -63,4 +63,10 @@ export class RwandaLocationQueryDto {
   @Transform(({ value }) => normalizeQueryValue(value))
   q?: string;
 }
+
+export class ProvinceQueryDto extends PickType(RwandaLocationQueryDto, ['q'] as const) {}
+export class DistrictQueryDto extends PickType(RwandaLocationQueryDto, ['p', 'q'] as const) {}
+export class SectorQueryDto extends PickType(RwandaLocationQueryDto, ['p', 'd', 'q'] as const) {}
+export class CellQueryDto extends PickType(RwandaLocationQueryDto, ['p', 'd', 's', 'q'] as const) {}
+export class VillageQueryDto extends PickType(RwandaLocationQueryDto, ['p', 'd', 's', 'c', 'q'] as const) {}
 
