@@ -1,63 +1,86 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Region, RegionDocument } from '../government/schemas/region.schema';
+import { GovernmentLevel } from '../users/enums/government-level.enum';
 import { RwandaLocationQueryDto } from './dto/rwanda-location-query.dto';
-import { JsonRwandaLocationSource } from './services/json-rwanda-location.source';
 
 @Injectable()
 export class LocationsService {
-  constructor(private readonly locationSource: JsonRwandaLocationSource) {}
+  constructor(
+    @InjectModel(Region.name) private readonly regionModel: Model<RegionDocument>,
+  ) {}
 
-  private filterByQuery<T extends { name: string; slug: string }>(nodes: T[], query?: string): T[] {
-    if (!query) return nodes;
-    const lowerQuery = query.toLowerCase();
-    return nodes.filter(
-      (n) => n.name.toLowerCase().includes(lowerQuery) || n.slug.includes(lowerQuery)
-    );
+  private sanitizeId(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   }
 
-  getTree() {
-    return this.locationSource.getTree();
+  private mapToDto(regions: RegionDocument[]) {
+    return regions.map(r => ({
+      id: r.regionId,
+      name: r.name,
+      slug: r.regionId,
+      level: r.level.toLowerCase(),
+    }));
   }
 
-  getProvinces(query: RwandaLocationQueryDto) {
-    const nodes = this.locationSource.getProvinces();
-    return this.filterByQuery(nodes, query.q);
-  }
-
-  getDistricts(query: RwandaLocationQueryDto) {
-    if (!query.p) {
-      // If no province specified, gather all districts
-      const provinces = this.locationSource.getProvinces();
-      let allDistricts: any[] = [];
-      for (const prov of provinces) {
-        allDistricts = allDistricts.concat(this.locationSource.getDistricts(prov.slug));
-      }
-      return this.filterByQuery(allDistricts, query.q);
+  async getProvinces(query: RwandaLocationQueryDto) {
+    const filter: any = { level: GovernmentLevel.PROVINCE };
+    if (query.q) {
+      filter.name = { $regex: query.q, $options: 'i' };
     }
-    const nodes = this.locationSource.getDistricts(query.p);
-    return this.filterByQuery(nodes, query.q);
+    const provinces = await this.regionModel.find(filter).sort({ name: 1 }).exec();
+    return this.mapToDto(provinces);
   }
 
-  getSectors(query: RwandaLocationQueryDto) {
+  async getDistricts(query: RwandaLocationQueryDto) {
+    const filter: any = { level: GovernmentLevel.DISTRICT };
+    if (query.p) {
+      filter.parentId = `prov-${this.sanitizeId(query.p)}`;
+    }
+    if (query.q) {
+      filter.name = { $regex: query.q, $options: 'i' };
+    }
+    const districts = await this.regionModel.find(filter).sort({ name: 1 }).exec();
+    return this.mapToDto(districts);
+  }
+
+  async getSectors(query: RwandaLocationQueryDto) {
     if (!query.p || !query.d) {
       throw new BadRequestException('Province (p) and District (d) are required to get sectors.');
     }
-    const nodes = this.locationSource.getSectors(query.p, query.d);
-    return this.filterByQuery(nodes, query.q);
+    const parentId = `dist-${this.sanitizeId(query.d)}`;
+    const filter: any = { level: GovernmentLevel.SECTOR, parentId };
+    if (query.q) {
+      filter.name = { $regex: query.q, $options: 'i' };
+    }
+    const sectors = await this.regionModel.find(filter).sort({ name: 1 }).exec();
+    return this.mapToDto(sectors);
   }
 
-  getCells(query: RwandaLocationQueryDto) {
+  async getCells(query: RwandaLocationQueryDto) {
     if (!query.p || !query.d || !query.s) {
       throw new BadRequestException('Province (p), District (d), and Sector (s) are required to get cells.');
     }
-    const nodes = this.locationSource.getCells(query.p, query.d, query.s);
-    return this.filterByQuery(nodes, query.q);
+    const parentId = `sect-${this.sanitizeId(query.d)}-${this.sanitizeId(query.s)}`;
+    const filter: any = { level: GovernmentLevel.CELL, parentId };
+    if (query.q) {
+      filter.name = { $regex: query.q, $options: 'i' };
+    }
+    const cells = await this.regionModel.find(filter).sort({ name: 1 }).exec();
+    return this.mapToDto(cells);
   }
 
-  getVillages(query: RwandaLocationQueryDto) {
+  async getVillages(query: RwandaLocationQueryDto) {
     if (!query.p || !query.d || !query.s || !query.c) {
       throw new BadRequestException('Province (p), District (d), Sector (s), and Cell (c) are required to get villages.');
     }
-    const nodes = this.locationSource.getVillages(query.p, query.d, query.s, query.c);
-    return this.filterByQuery(nodes, query.q);
+    const parentId = `cell-${this.sanitizeId(query.s)}-${this.sanitizeId(query.c)}`;
+    const filter: any = { level: GovernmentLevel.VILLAGE, parentId };
+    if (query.q) {
+      filter.name = { $regex: query.q, $options: 'i' };
+    }
+    const villages = await this.regionModel.find(filter).sort({ name: 1 }).exec();
+    return this.mapToDto(villages);
   }
 }

@@ -49,11 +49,4 @@ export class LocationsController {
   getCells(@Query() query: CellQueryDto) {
     return this.locationsService.getCells(query);
   }
-
-  @Get('tree')
-  @ApiOperation({ summary: 'Get complete Rwanda location tree (Public)' })
-  @ApiOkResponse({ description: 'Complete location tree as JSON' })
-  getTree() {
-    return this.locationsService.getTree();
-  }
 }
